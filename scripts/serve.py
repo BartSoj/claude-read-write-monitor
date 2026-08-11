@@ -405,6 +405,20 @@ def run() -> int:
 
 def ensure() -> int:
     if is_up():
+        # A server started by hand, or by a differently-configured install, holds the
+        # port and would silently serve a different data directory than the one this
+        # session records into. Say so rather than appear to work.
+        try:
+            import urllib.request
+            with urllib.request.urlopen(f"http://127.0.0.1:{PORT}/health", timeout=2) as r:
+                running = json.load(r).get("data")
+            if running and os.path.realpath(running) != os.path.realpath(data_dir()):
+                sys.stderr.write(
+                    f"read-write-monitor: port {PORT} is served by another instance reading "
+                    f"{running}, not {data_dir()}. Stop it (serve.py stop) or set RWM_PORT.\n")
+                return 1
+        except Exception:
+            pass
         return 0
     log = os.path.join(data_dir(), "server.log")
     os.makedirs(data_dir(), exist_ok=True)
