@@ -140,6 +140,27 @@ button[aria-pressed="true"] { color: var(--text-primary); border-color: var(--te
 .rule-compact::before, .rule-compact::after { content: ""; height: 1px; background: var(--write);
   opacity: .45; flex: 1; }
 
+.tabs { display: inline-flex; }
+.tabs button { border-radius: 0; margin-left: -1px; }
+.tabs button:first-child { border-radius: 7px 0 0 7px; margin-left: 0; }
+.tabs button:last-child { border-radius: 0 7px 7px 0; }
+.tabs button[aria-pressed="true"] { background: var(--surface-0); }
+.hint { font-weight: 400; letter-spacing: 0; text-transform: none; font-size: .74rem;
+  color: var(--text-muted); margin-left: 8px; }
+.scroll { overflow-x: auto; }
+th.s { cursor: pointer; user-select: none; white-space: nowrap; }
+th.s:hover { color: var(--text-primary); }
+th.s[data-active]::after { content: " ↓"; color: var(--text-primary); }
+th.s[data-active="asc"]::after { content: " ↑"; }
+td.r, th.r { text-align: right; padding-right: 14px; }
+/* First column absorbs the slack and truncates; numbers never wrap or get clipped. */
+#pFolders td:first-child, #pFiles td:first-child { max-width: 0; width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#pFolders td:not(:first-child), #pFiles td:not(:first-child) { white-space: nowrap; }
+.bar { display: inline-block; width: 46px; height: 6px; border-radius: 3px; background: var(--track);
+  vertical-align: middle; margin-right: 6px; position: relative; overflow: hidden; }
+.bar > i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--read); }
+.cold td:first-child { color: var(--text-muted); }
 table { border-collapse: collapse; width: 100%; font-size: .82rem; }
 th, td { text-align: left; padding: 6px 10px 6px 0; border-bottom: 1px solid var(--rule-soft); }
 th { font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); }
@@ -158,11 +179,17 @@ td { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 <header class="top">
   <span class="dot" id="live"></span>
   <h1>read/write monitor</h1>
+  <select id="projects" aria-label="Project"></select>
   <select id="sessions" aria-label="Session"></select>
+  <span class="tabs">
+    <button id="tabSession" aria-pressed="true">Session</button
+    ><button id="tabProject" aria-pressed="false">Project</button>
+  </span>
   <span class="grow"></span>
   <span class="sub mono" id="cwd"></span>
 </header>
 
+<div id="tab-session">
 <div class="tiles" id="tiles"></div>
 
 <div class="controls">
@@ -190,6 +217,28 @@ td { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 
 <h2>Timeline</h2>
 <div id="timeline"></div>
+</div><!-- /tab-session -->
+
+<div id="tab-project" hidden>
+  <div class="tiles" id="pTiles"></div>
+
+  <h2>Folders <span class="hint">every row covers its whole subtree</span></h2>
+  <div class="controls" style="margin:0 0 10px">
+    <button id="pColdDirs" aria-pressed="false">Only never opened</button>
+    <span class="sub" id="pDirCount"></span>
+  </div>
+  <div class="scroll"><table id="pFolders"></table></div>
+
+  <h2>Files <span class="hint">across every session in this project</span></h2>
+  <div class="controls" style="margin:0 0 10px">
+    <button id="pOnlyCold" aria-pressed="false">Only never touched</button>
+    <span class="sub" id="pCold"></span>
+  </div>
+  <div class="scroll"><table id="pFiles"></table></div>
+  <p class="note">“Never touched” is measured against <span class="mono">git ls-files</span>, so
+    untracked and ignored files are not counted as cold. Instruction files are counted as reads
+    each time Claude Code reports loading them.</p>
+</div>
 
 </div>
 <div id="tip"></div>
@@ -201,7 +250,9 @@ const DEPTH = ["--depth-1","--depth-2","--depth-3","--depth-4","--depth-5"];
 const state = {
   sid: location.pathname.startsWith("/s/") ? decodeURIComponent(location.pathname.slice(3)) : null,
   offset: 0, events: [], meta: {}, live: false,
-  subagents: false, project: true, table: false,
+  subagents: false, align: true, table: false,
+  tab: "session", proj: null, agg: null, onlyCold: false, coldDirs: false,
+  sortF: { key: "read_chars", dir: -1 }, sortD: { key: "read_chars", dir: -1 },
 };
 
 /* ---------------------------------------------------------------- line projection */
@@ -255,6 +306,7 @@ function build() {
     return files.get(p);
   };
 
+  const lastInstr = {};
   let firstEditSeq = Infinity;
   for (const e of evs) if (e.kind === "edit" || e.kind === "write") firstEditSeq = Math.min(firstEditSeq, e.seq);
 
@@ -272,7 +324,7 @@ function build() {
       f.readCount++; f.readChars += e.chars || 0;
       if (e.total_lines) f.total = Math.max(f.total, e.total_lines);
       let s = e.start, en = e.end;
-      if (state.project) {
+      if (state.align) {
         s = project(transforms, e.path, e.seq, e.start);
         en = project(transforms, e.path, e.seq, e.end);
         if (s === null || en === null) { f.stale = true; continue; }
@@ -285,7 +337,7 @@ function build() {
       f.writeCount++; f.writtenLines += e.lines_written || 0;
       for (const sp of e.spans || []) {
         let s = sp.new[0], en = sp.new[1];
-        if (state.project) {
+        if (state.align) {
           s = project(transforms, e.path, e.seq, sp.new[0]);
           en = project(transforms, e.path, e.seq, sp.new[1]);
           if (s === null || en === null) continue;
@@ -293,6 +345,9 @@ function build() {
         if (en >= s) f.writes.push({ s, e: en, seq: e.seq, precision: e.precision });
       }
     } else if (e.kind === "instructions") {
+      // Same duplicate-fire collapse the server applies; see /api/aggregate.
+      if (lastInstr[e.path] != null && Math.abs(e.ts - lastInstr[e.path]) < 5000) continue;
+      lastInstr[e.path] = e.ts;
       const f = get(e.path);
       f.instr = e.load_reason || "loaded";
       f.firstSeq = Math.min(f.firstSeq, e.seq);
@@ -455,6 +510,127 @@ function renderTimeline(m) {
 
 const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
+/* ---------------------------------------------------------------- project view */
+// Cross-session rollup. The server does the aggregation; this only sorts and draws.
+
+const F_COLS = [
+  ["rel", "File", false], ["total_lines", "Len", true], ["reads", "Reads", true],
+  ["read_lines", "Read", true], ["read_chars", "~Tok", true],
+  ["writes", "Writes", true], ["write_lines", "Written", true],
+  ["sessions", "Sess", true],
+];
+const D_COLS = [
+  ["dir", "Folder", false], ["cover", "Touched", false], ["reads", "Reads", true],
+  ["read_lines", "Read", true], ["read_chars", "~Tok", true],
+  ["writes", "Writes", true], ["write_lines", "Written", true],
+];
+
+function head(cols, sort, which) {
+  return `<thead><tr>${cols.map(([k, label, num]) =>
+    `<th class="s${num ? " r" : ""}" data-sort="${which}:${k}"${
+      sort.key === k ? ` data-active="${sort.dir < 0 ? "desc" : "asc"}"` : ""}>${label}</th>`
+  ).join("")}</tr></thead>`;
+}
+
+function sortRows(rows, sort) {
+  return [...rows].sort((a, b) => {
+    const x = a[sort.key], y = b[sort.key];
+    if (typeof x === "string") return sort.dir * x.localeCompare(y);
+    return sort.dir * ((x || 0) - (y || 0));
+  });
+}
+
+function renderProject() {
+  const a = state.agg;
+  if (!a) { $("#pTiles").innerHTML = `<p class="empty">Loading…</p>`; return; }
+
+  const touched = a.files.length;
+  const readChars = a.files.reduce((s, f) => s + f.read_chars, 0);
+  const readLines = a.files.reduce((s, f) => s + f.read_lines, 0);
+  const writeLines = a.files.reduce((s, f) => s + f.write_lines, 0);
+  const ratio = writeLines ? (readLines / writeLines) : null;
+  const coldPct = a.universe ? Math.round(a.untouched_total / a.universe * 100) : 0;
+
+  const instrChars = a.instructions?.chars || 0;
+  const subPct = readChars ? Math.round((a.lanes?.sub?.read_chars || 0) / readChars * 100) : 0;
+  $("#pTiles").innerHTML = [
+    tile("Sessions", a.sessions.length,
+         `${a.windows || a.sessions.length} start${a.windows === 1 ? "" : "s"} incl. resumes · ${
+           a.sessions.filter(s => !s.closed).length} active`),
+    tile("Files touched", `${fmt(touched)}`,
+         a.universe ? `of ${fmt(a.universe)} tracked · ${coldPct}% never touched` : "no git file list"),
+    tile("Lines read", fmt(readLines),
+         `~${fmt(tokens(readChars))} tokens${subPct ? ` · ${subPct}% by subagents` : ""}`),
+    tile("Lines written", fmt(writeLines), `${fmt(a.files.reduce((s, f) => s + f.writes, 0))} edits`),
+    tile("Read per line written", ratio ? ratio.toFixed(1) + "×" : "—",
+         ratio ? "lines read for each line changed" : "nothing written yet"),
+    tile("Instruction loads", fmt(a.instructions?.loads || 0),
+         `~${fmt(tokens(instrChars))} tokens · ${readChars ? Math.round(instrChars / readChars * 100) : 0}% of all reading`),
+  ].join("");
+
+  const maxDirRead = Math.max(1, ...a.folders.map(d => d.read_chars));
+  let dirs = a.folders.map(d => ({ ...d, cover: d.files_total ? d.files_touched / d.files_total : 0 }));
+  // Untouched folders answer "what does nobody look at", but there are usually far more
+  // of them than active ones, so they are opt-in and ranked by how much is sitting there.
+  dirs = state.coldDirs ? dirs.filter(d => !d.files_touched).sort((x, y) => y.files_total - x.files_total)
+                        : sortRows(dirs.filter(d => d.files_touched), state.sortD);
+  $("#pDirCount").textContent = state.coldDirs
+    ? `${dirs.length} folders no session has opened`
+    : `${dirs.length} folders touched · ${a.folders.filter(d => !d.files_touched).length} never opened`;
+  dirs = dirs.slice(0, 250);
+  $("#pFolders").innerHTML = head(D_COLS, state.sortD, "D") + "<tbody>" + dirs.map(d => `<tr${d.files_touched ? "" : ' class="cold"'}>
+    <td class="mono">${d.dir === "." ? "<em>(project root)</em>" : esc(d.dir)}</td>
+    <td><span class="bar" title="${d.files_touched} of ${d.files_total}"><i style="width:${Math.round(d.cover * 100)}%"></i></span>
+      <span class="num">${d.files_touched}/${d.files_total}</span></td>
+    <td class="r">${fmt(d.reads)}</td><td class="r">${fmt(d.read_lines)}</td>
+    <td class="r" style="color:${d.read_chars ? `color-mix(in oklab, var(--read) ${Math.round(30 + 70 * d.read_chars / maxDirRead)}%, var(--text-secondary))` : "inherit"}">${fmt(tokens(d.read_chars))}</td>
+    <td class="r">${fmt(d.writes)}</td><td class="r">${fmt(d.write_lines)}</td></tr>`).join("") + "</tbody>";
+
+  const cold = (a.untouched || []).map(rel => ({
+    rel, total_lines: 0, reads: 0, read_lines: 0, read_chars: 0, writes: 0, write_lines: 0,
+    sessions: 0, cold: true,
+  }));
+  const rows = state.onlyCold ? cold : sortRows(a.files, state.sortF).slice(0, 300);
+  $("#pCold").textContent = a.untouched_total
+    ? `${fmt(a.untouched_total)} tracked files no session has opened` : "";
+  $("#pFiles").innerHTML = head(F_COLS, state.sortF, "F") + "<tbody>" + rows.map(f => `<tr${f.cold ? ' class="cold"' : ""}>
+    <td class="mono">${esc(f.rel)}${f.instructions ? ' <span class="badge" style="color:var(--instr)">instr</span>' : ""}</td>
+    <td class="r">${f.total_lines ? fmt(f.total_lines) : "—"}</td>
+    <td class="r">${f.reads || "—"}</td><td class="r">${f.read_lines ? fmt(f.read_lines) : "—"}</td>
+    <td class="r">${f.read_chars ? "~" + fmt(tokens(f.read_chars)) : "—"}</td>
+    <td class="r">${f.writes || "—"}</td><td class="r">${f.write_lines ? fmt(f.write_lines) : "—"}</td>
+    <td class="r">${f.sessions || "—"}</td></tr>`).join("") + "</tbody>";
+}
+
+document.addEventListener("click", (ev) => {
+  const th = ev.target.closest?.("th.s");
+  if (!th) return;
+  const [which, key] = th.dataset.sort.split(":");
+  const s = which === "F" ? state.sortF : state.sortD;
+  if (s.key === key) s.dir = -s.dir; else { s.key = key; s.dir = -1; }
+  renderProject();
+});
+
+async function loadAggregate() {
+  if (!state.proj) return;
+  try {
+    const r = await fetch(`/api/aggregate?project=${encodeURIComponent(state.proj)}`);
+    state.agg = await r.json();
+    renderProject();
+  } catch { /* server down */ }
+}
+
+function setTab(tab) {
+  state.tab = tab;
+  $("#tab-session").hidden = tab !== "session";
+  $("#tab-project").hidden = tab !== "project";
+  $("#tabSession").setAttribute("aria-pressed", String(tab === "session"));
+  $("#tabProject").setAttribute("aria-pressed", String(tab === "project"));
+  if (tab === "project") loadAggregate();
+}
+$("#tabSession").addEventListener("click", () => setTab("session"));
+$("#tabProject").addEventListener("click", () => setTab("project"));
+
 /* ---------------------------------------------------------------- tooltip */
 const tip = $("#tip");
 document.addEventListener("mousemove", (ev) => {
@@ -467,14 +643,44 @@ document.addEventListener("mousemove", (ev) => {
 });
 
 /* ---------------------------------------------------------------- polling */
+const ago = (ms) => {
+  if (!ms) return "";
+  const s = (Date.now() - ms) / 1000;
+  if (s < 90) return "just now";
+  if (s < 5400) return Math.round(s / 60) + "m ago";
+  if (s < 172800) return Math.round(s / 3600) + "h ago";
+  return Math.round(s / 86400) + "d ago";
+};
+
 async function loadSessions() {
   try {
-    const r = await fetch("/api/sessions");
-    const { sessions } = await r.json();
-    if (!state.sid && sessions.length) state.sid = sessions[0].id;
-    $("#sessions").innerHTML = sessions.map(s =>
-      `<option value="${esc(s.id)}" ${s.id === state.sid ? "selected" : ""}>${
-        esc((s.cwd || "").split("/").pop() || s.id.slice(0, 8))} · ${s.id.slice(0, 8)}${s.closed ? " (ended)" : ""}</option>`).join("");
+    const [rs, rp] = await Promise.all([fetch("/api/sessions"), fetch("/api/projects")]);
+    const { sessions } = await rs.json();
+    const { projects } = await rp.json();
+    state.sessions = sessions;
+
+    if (!state.sid && sessions.length) {
+      // Honour an explicitly requested project over "newest session anywhere".
+      state.sid = (state.proj && sessions.find(s => s.project === state.proj) || sessions[0]).id;
+    }
+    const current = sessions.find(s => s.id === state.sid);
+    if (!state.proj) state.proj = current?.project || projects[0]?.project || null;
+
+    // Projects, most recently active first, active session count called out.
+    $("#projects").innerHTML = projects.map(p =>
+      `<option value="${esc(p.project)}" ${p.project === state.proj ? "selected" : ""}>${
+        esc(p.name)}${p.active ? ` · ${p.active} active` : ""} · ${p.sessions} session${p.sessions === 1 ? "" : "s"}</option>`
+    ).join("") || `<option>no sessions yet</option>`;
+
+    // Sessions for the selected project first, then the rest, newest first.
+    const mine = sessions.filter(s => s.project === state.proj);
+    const rest = sessions.filter(s => s.project !== state.proj);
+    const opt = (s) => `<option value="${esc(s.id)}" ${s.id === state.sid ? "selected" : ""}>${
+      s.closed ? "" : "● "}${ago(s.updated_at)} · ${s.id.slice(0, 8)}${
+      s.project !== state.proj ? " · " + esc((s.project || "").split("/").pop()) : ""}</option>`;
+    $("#sessions").innerHTML =
+      (mine.length ? `<optgroup label="This project">${mine.map(opt).join("")}</optgroup>` : "") +
+      (rest.length ? `<optgroup label="Other projects">${rest.map(opt).join("")}</optgroup>` : "");
   } catch { /* server down */ }
 }
 
@@ -497,15 +703,15 @@ async function poll() {
   } catch { $("#live").className = "dot off"; }
 }
 
-function toggle(btn, key) {
+function toggle(btn, key, fn = render) {
   $(btn).addEventListener("click", () => {
     state[key] = !state[key];
     $(btn).setAttribute("aria-pressed", String(state[key]));
-    render();
+    fn();
   });
 }
 toggle("#tSub", "subagents");
-toggle("#tProj", "project");
+toggle("#tProj", "align");
 toggle("#tTable", "table");
 $("#tTheme").addEventListener("click", () => {
   const dark = document.documentElement.dataset.theme !== "dark";
@@ -516,15 +722,34 @@ $("#tTheme").addEventListener("click", () => {
   const t = new URLSearchParams(location.search).get("theme") || localStorage.getItem("rwm-theme");
   if (t) document.documentElement.dataset.theme = t;
 }
+toggle("#pOnlyCold", "onlyCold", renderProject);
+toggle("#pColdDirs", "coldDirs", renderProject);
 $("#sessions").addEventListener("change", (e) => {
   state.sid = e.target.value; state.offset = 0; state.events = [];
+  const s = (state.sessions || []).find(x => x.id === state.sid);
+  if (s?.project) state.proj = s.project;
   history.replaceState({}, "", "/s/" + encodeURIComponent(state.sid));
-  render(); poll();
+  render(); loadSessions(); poll(); if (state.tab === "project") loadAggregate();
+});
+$("#projects").addEventListener("change", (e) => {
+  state.proj = e.target.value;
+  const first = (state.sessions || []).find(s => s.project === state.proj);
+  if (first && state.tab === "session") {
+    state.sid = first.id; state.offset = 0; state.events = [];
+    history.replaceState({}, "", "/s/" + encodeURIComponent(state.sid));
+    poll();
+  }
+  state.agg = null; loadSessions(); if (state.tab === "project") loadAggregate();
 });
 
-loadSessions().then(poll);
+{
+  const q = new URLSearchParams(location.search);
+  if (q.get("project")) state.proj = q.get("project");
+  if (q.get("tab") === "project") setTab("project");
+}
+loadSessions().then(() => { poll(); if (state.tab === "project") loadAggregate(); });
 setInterval(poll, 1200);
-setInterval(loadSessions, 15000);
+setInterval(() => { loadSessions(); if (state.tab === "project") loadAggregate(); }, 15000);
 render();
 </script>
 </body>

@@ -296,6 +296,18 @@ def ensure_server() -> None:
         pass
 
 
+def git_root(path: str | None) -> str | None:
+    """Repository root for `path`, which is the unit sessions get grouped into."""
+    if not path or not os.path.isdir(path):
+        return None
+    try:
+        out = subprocess.run(["git", "-C", path, "rev-parse", "--show-toplevel"],
+                             capture_output=True, text=True, timeout=3)
+        return out.stdout.strip() or None
+    except Exception:
+        return None
+
+
 def viewer_url(session_id: str) -> str:
     port = os.environ.get("RWM_PORT", "7788")
     return f"http://127.0.0.1:{port}/s/{session_id}"
@@ -325,7 +337,9 @@ def main() -> int:
             rec.update({"phase": "start", "source": source, "cwd": d.get("cwd"),
                         "model": d.get("model")})
         append(sid, {k: v for k, v in rec.items() if v is not None})
-        write_meta(sid, {"session_id": sid, "cwd": d.get("cwd"),
+        cwd = d.get("cwd")
+        write_meta(sid, {"session_id": sid, "cwd": cwd,
+                         "project": git_root(cwd) or cwd,
                          "started_at": int(time.time() * 1000),
                          "source": source, "model": d.get("model"),
                          "title": d.get("session_title"), "closed": False})

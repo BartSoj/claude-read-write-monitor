@@ -54,6 +54,20 @@ To share it off the machine: `bb connect expose 7788`.
 
 Subagent activity is tagged with `agent_type` and kept in its own lane.
 
+## Views
+
+**Session** — coverage strips per file (read ranges shaded by re-read depth, written ranges
+alongside), summary tiles, and a chronological timeline grouped by turn with compaction
+boundaries. Line numbers are projected onto the file's current state by replaying edit spans.
+
+**Project** — every session for one project rolled up: folder table where each row covers its
+whole subtree, sortable file table, cold lists for folders and files measured against
+`git ls-files`, and a read-per-line-written ratio. Instruction loads are counted separately from
+code reading, and resume cycles are shown alongside session count because a resumed session keeps
+its id and reloads instructions into a fresh context.
+
+Deep links: `/s/<session_id>`, `?tab=project`, `?project=<abs path>`, `?theme=dark`.
+
 **No file content is ever stored** — only paths, line numbers and counts.
 
 Reads that don't go through the `Read` tool are not recorded: `@file` references (no hook fires
