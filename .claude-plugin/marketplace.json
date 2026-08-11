@@ -1,6 +1,7 @@
 {
   "name": "claude-read-write-monitor",
   "owner": { "name": "BartSoj" },
+  "description": "Observability for what Claude Code agents read and edit, line by line.",
   "plugins": [
     {
       "name": "read-write-monitor",
