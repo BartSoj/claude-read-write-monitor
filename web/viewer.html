@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>read/write monitor</title>
+<style>
+:root {
+  color-scheme: light;
+  --surface-0:      #f6f6f4;
+  --surface-1:      #fcfcfb;
+  --rule:           #e4e3df;
+  --rule-soft:      #eeedea;
+  --text-primary:   #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted:     #85837c;
+  --read:           #2a78d6;
+  --write:          #eb6834;
+  --instr:          #1baf7a;
+  --depth-1:        #86b6ef;
+  --depth-2:        #5598e7;
+  --depth-3:        #2a78d6;
+  --depth-4:        #1c5cab;
+  --depth-5:        #104281;
+  --track:          #e9e8e4;
+}
+/* Dark is a selected palette stepped for the dark surface, not an inversion.
+   Declared under both scopes so the manual toggle beats the OS setting either way. */
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --surface-0:      #121211;
+    --surface-1:      #1a1a19;
+    --rule:           #33332f;
+    --rule-soft:      #262623;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #8d8c83;
+    --read:           #3987e5;
+    --write:          #d95926;
+    --instr:          #199e70;
+    --depth-1:        #184f95;
+    --depth-2:        #256abf;
+    --depth-3:        #3987e5;
+    --depth-4:        #6da7ec;
+    --depth-5:        #9ec5f4;
+    --track:          #2a2a27;
+  }
+}
+
+:root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface-0:      #121211;
+    --surface-1:      #1a1a19;
+    --rule:           #33332f;
+    --rule-soft:      #262623;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #8d8c83;
+    --read:           #3987e5;
+    --write:          #d95926;
+    --instr:          #199e70;
+    --depth-1:        #184f95;
+    --depth-2:        #256abf;
+    --depth-3:        #3987e5;
+    --depth-4:        #6da7ec;
+    --depth-5:        #9ec5f4;
+    --track:          #2a2a27;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--surface-0); color: var(--text-primary);
+  font: 400 14px/1.55 ui-sans-serif, -apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 1080px; margin: 0 auto; padding: 28px 24px 96px; }
+h1 { margin: 0; font-size: 1.05rem; font-weight: 640; letter-spacing: -0.01em; }
+h2 { margin: 34px 0 12px; font-size: .82rem; font-weight: 640; letter-spacing: .06em;
+     text-transform: uppercase; color: var(--text-muted); }
+.mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+.num { font-variant-numeric: tabular-nums; }
+
+header.top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding-bottom: 16px; border-bottom: 1px solid var(--rule); }
+header.top .grow { flex: 1 1 auto; }
+select, button {
+  font: inherit; font-size: .82rem; color: var(--text-secondary);
+  background: var(--surface-1); border: 1px solid var(--rule);
+  border-radius: 7px; padding: 5px 9px; cursor: pointer;
+}
+button[aria-pressed="true"] { color: var(--text-primary); border-color: var(--text-muted); }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--instr); display: inline-block; }
+.dot.off { background: var(--text-muted); }
+.sub { font-size: .78rem; color: var(--text-muted); }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-top: 20px; }
+.tile { background: var(--surface-1); border: 1px solid var(--rule); border-radius: 10px; padding: 12px 14px; }
+.tile .k { font-size: .7rem; letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted); }
+.tile .v { font-size: 1.5rem; font-weight: 620; letter-spacing: -0.02em; margin-top: 3px;
+  font-variant-numeric: tabular-nums; }
+.tile .n { font-size: .74rem; color: var(--text-muted); margin-top: 1px; }
+
+.controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 18px; }
+.legend { display: flex; gap: 14px; align-items: center; margin-left: auto; font-size: .76rem; color: var(--text-secondary); }
+.legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; margin-right: 5px; vertical-align: -1px; }
+
+.file { background: var(--surface-1); border: 1px solid var(--rule); border-radius: 10px;
+  padding: 11px 14px 13px; margin-bottom: 8px; }
+.file .hd { display: flex; gap: 10px; align-items: baseline; }
+.file .path { font-size: .84rem; font-weight: 560; word-break: break-all; }
+.file .path .dim { color: var(--text-muted); font-weight: 400; }
+.file .stats { margin-left: auto; font-size: .74rem; color: var(--text-muted); white-space: nowrap;
+  font-variant-numeric: tabular-nums; }
+.strip { position: relative; height: 15px; margin-top: 9px; background: var(--track);
+  border-radius: 4px; overflow: hidden; }
+.strip .seg { position: absolute; top: 0; bottom: 0; border-radius: 2px; }
+.wstrip { position: relative; height: 5px; margin-top: 3px; }
+.wstrip .seg { position: absolute; top: 0; bottom: 0; background: var(--write); border-radius: 2px; }
+.axis { display: flex; justify-content: space-between; font-size: .68rem; color: var(--text-muted);
+  margin-top: 4px; font-variant-numeric: tabular-nums; }
+.flags { margin-top: 7px; font-size: .73rem; color: var(--text-secondary); }
+.flag { display: inline-block; border: 1px solid var(--rule); border-radius: 20px;
+  padding: 1px 8px; margin-right: 6px; color: var(--text-muted); }
+
+.turn { border-left: 2px solid var(--rule); padding: 2px 0 2px 14px; margin: 0 0 4px 4px; }
+.turn > .lbl { font-size: .7rem; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--text-muted); margin-bottom: 5px; }
+.ev { display: flex; gap: 9px; align-items: baseline; padding: 2px 0; font-size: .81rem; }
+.chip { flex: 0 0 auto; width: 44px; font-size: .66rem; letter-spacing: .04em; text-transform: uppercase;
+  font-weight: 640; }
+.chip.read { color: var(--read); } .chip.edit, .chip.write { color: var(--write); }
+.chip.instructions { color: var(--instr); }
+.ev .p { word-break: break-all; color: var(--text-secondary); }
+.ev .r { margin-left: auto; color: var(--text-muted); font-variant-numeric: tabular-nums;
+  white-space: nowrap; font-size: .76rem; }
+.badge { border: 1px solid var(--rule); border-radius: 20px; padding: 0 6px; font-size: .68rem;
+  color: var(--text-muted); }
+.rule-compact { display: flex; align-items: center; gap: 10px; margin: 16px 0;
+  font-size: .72rem; letter-spacing: .05em; text-transform: uppercase; color: var(--write); }
+.rule-compact::before, .rule-compact::after { content: ""; height: 1px; background: var(--write);
+  opacity: .45; flex: 1; }
+
+table { border-collapse: collapse; width: 100%; font-size: .82rem; }
+th, td { text-align: left; padding: 6px 10px 6px 0; border-bottom: 1px solid var(--rule-soft); }
+th { font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); }
+td { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+[hidden] { display: none !important; }
+.empty { color: var(--text-muted); font-size: .85rem; padding: 24px 0; }
+.note { font-size: .76rem; color: var(--text-muted); margin-top: 10px; max-width: 60ch; }
+#tip { position: fixed; pointer-events: none; z-index: 9; background: var(--surface-1);
+  border: 1px solid var(--rule); border-radius: 7px; padding: 6px 9px; font-size: .74rem;
+  color: var(--text-primary); box-shadow: 0 4px 14px rgba(0,0,0,.14); opacity: 0; transition: opacity .1s; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <span class="dot" id="live"></span>
+  <h1>read/write monitor</h1>
+  <select id="sessions" aria-label="Session"></select>
+  <span class="grow"></span>
+  <span class="sub mono" id="cwd"></span>
+</header>
+
+<div class="tiles" id="tiles"></div>
+
+<div class="controls">
+  <button id="tSub" aria-pressed="false">Include subagents</button>
+  <button id="tProj" aria-pressed="true">Align to current line numbers</button>
+  <button id="tTable" aria-pressed="false">Table</button>
+  <button id="tTheme" title="Toggle theme">◑</button>
+  <span class="legend">
+    <span><i style="background:var(--read)"></i>read</span>
+    <span><i style="background:var(--write)"></i>written</span>
+    <span><i style="background:var(--instr)"></i>instructions</span>
+  </span>
+</div>
+
+<h2>Files</h2>
+<div id="files"></div>
+<table id="table" hidden>
+  <thead><tr><th>File</th><th>Lines</th><th>Read lines</th><th>Reads</th><th>Re-read</th>
+    <th>Written lines</th><th>Est. tokens</th></tr></thead>
+  <tbody id="tbody"></tbody>
+</table>
+<p class="note" id="blindspots">Covers the Read, Edit and Write tools plus instruction-file loads.
+  Context arriving by <span class="mono">@file</span> reference, Bash, Grep, WebFetch, MCP tools or
+  subagent summaries is not recorded and is not counted here.</p>
+
+<h2>Timeline</h2>
+<div id="timeline"></div>
+
+</div>
+<div id="tip"></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const DEPTH = ["--depth-1","--depth-2","--depth-3","--depth-4","--depth-5"];
+
+const state = {
+  sid: location.pathname.startsWith("/s/") ? decodeURIComponent(location.pathname.slice(3)) : null,
+  offset: 0, events: [], meta: {}, live: false,
+  subagents: false, project: true, table: false,
+};
+
+/* ---------------------------------------------------------------- line projection */
+// Each edit/write carries {old:[s,e], new:[s,e]} spans, 1-based inclusive, e<s meaning empty.
+// Replaying them in seq order maps a line number recorded at any past point in the
+// session onto its position in the file as it stands now. No file text is needed.
+function applySpans(spans, line) {
+  let shift = 0;
+  for (const sp of spans) {
+    const [os_, oe] = sp.old, [ns, ne] = sp.new;
+    if (line < os_) return line + shift;
+    if (line <= oe) return ns + Math.min(line - os_, Math.max(0, ne - ns));
+    shift += (ne - ns) - (oe - os_);
+  }
+  return line + shift;
+}
+
+function buildTransforms(events) {
+  const byPath = new Map();
+  for (const e of events) {
+    if (e.kind !== "edit" && e.kind !== "write") continue;
+    if (!e.spans || !e.spans.length) continue;
+    if (!byPath.has(e.path)) byPath.set(e.path, []);
+    byPath.get(e.path).push({ seq: e.seq, spans: e.spans, barrier: !!e.barrier });
+  }
+  for (const list of byPath.values()) list.sort((a, b) => a.seq - b.seq);
+  return byPath;
+}
+
+function project(transforms, path, fromSeq, line) {
+  const list = transforms.get(path);
+  if (!list) return line;
+  for (const t of list) {
+    if (t.seq <= fromSeq) continue;
+    if (t.barrier) return null;      // whole file replaced: the old position is gone
+    line = applySpans(t.spans, line);
+  }
+  return line;
+}
+
+/* ---------------------------------------------------------------- model */
+function build() {
+  const evs = state.events.filter(e => state.subagents || !e.agent_id);
+  const transforms = buildTransforms(state.events);   // all edits shift lines, whoever made them
+  const files = new Map();
+  const get = (p) => {
+    if (!files.has(p)) files.set(p, {
+      path: p, reads: [], writes: [], readCount: 0, readChars: 0, writeCount: 0,
+      writtenLines: 0, total: 0, instr: null, stale: false, firstSeq: Infinity,
+    });
+    return files.get(p);
+  };
+
+  let firstEditSeq = Infinity;
+  for (const e of evs) if (e.kind === "edit" || e.kind === "write") firstEditSeq = Math.min(firstEditSeq, e.seq);
+
+  for (const e of state.events) {
+    if (e.kind === "edit" || e.kind === "write") {
+      const f = get(e.path);
+      if (e.total_lines_after) f.total = Math.max(f.total, e.total_lines_after);
+    }
+  }
+
+  for (const e of evs) {
+    if (e.kind === "read") {
+      const f = get(e.path);
+      f.firstSeq = Math.min(f.firstSeq, e.seq);
+      f.readCount++; f.readChars += e.chars || 0;
+      if (e.total_lines) f.total = Math.max(f.total, e.total_lines);
+      let s = e.start, en = e.end;
+      if (state.project) {
+        s = project(transforms, e.path, e.seq, e.start);
+        en = project(transforms, e.path, e.seq, e.end);
+        if (s === null || en === null) { f.stale = true; continue; }
+      }
+      f.reads.push({ s: Math.min(s, en), e: Math.max(s, en), seq: e.seq, ts: e.ts,
+                     agent: e.agent_type, before: e.seq < firstEditSeq });
+    } else if (e.kind === "edit" || e.kind === "write") {
+      const f = get(e.path);
+      f.firstSeq = Math.min(f.firstSeq, e.seq);
+      f.writeCount++; f.writtenLines += e.lines_written || 0;
+      for (const sp of e.spans || []) {
+        let s = sp.new[0], en = sp.new[1];
+        if (state.project) {
+          s = project(transforms, e.path, e.seq, sp.new[0]);
+          en = project(transforms, e.path, e.seq, sp.new[1]);
+          if (s === null || en === null) continue;
+        }
+        if (en >= s) f.writes.push({ s, e: en, seq: e.seq, precision: e.precision });
+      }
+    } else if (e.kind === "instructions") {
+      const f = get(e.path);
+      f.instr = e.load_reason || "loaded";
+      f.firstSeq = Math.min(f.firstSeq, e.seq);
+      if (e.total_lines) { f.total = Math.max(f.total, e.total_lines); }
+      if (!e.total_lines) continue;
+      f.readCount++; f.readChars += e.chars || 0;
+      f.reads.push({ s: 1, e: e.total_lines, seq: e.seq, ts: e.ts, agent: null,
+                     before: e.seq < firstEditSeq, instr: true });
+    }
+  }
+
+  for (const f of files.values()) {
+    if (!f.total) f.total = Math.max(1, ...f.reads.map(r => r.e), ...f.writes.map(w => w.e));
+    f.segments = mergeCounts(f.reads, f.total);
+    f.coveredLines = f.segments.reduce((a, s) => a + (s.e - s.s + 1), 0);
+    f.maxDepth = f.segments.reduce((a, s) => Math.max(a, s.c), 0);
+  }
+  return { files: [...files.values()], firstEditSeq, evs };
+}
+
+// Sweep overlapping read ranges into disjoint segments carrying a re-read count.
+function mergeCounts(ranges, total) {
+  if (!ranges.length) return [];
+  const pts = new Set();
+  for (const r of ranges) { pts.add(r.s); pts.add(r.e + 1); }
+  const xs = [...pts].sort((a, b) => a - b);
+  const out = [];
+  for (let i = 0; i < xs.length - 1; i++) {
+    const s = xs[i], e = xs[i + 1] - 1;
+    if (e < s) continue;
+    const c = ranges.filter(r => r.s <= s && r.e >= e).length;
+    if (!c) continue;
+    const last = out[out.length - 1];
+    if (last && last.c === c && last.e === s - 1) last.e = e;
+    else out.push({ s, e, c });
+  }
+  return out.map(sg => ({ ...sg, s: Math.max(1, sg.s), e: Math.min(total, sg.e) }))
+            .filter(sg => sg.e >= sg.s);
+}
+
+/* ---------------------------------------------------------------- render */
+const fmt = (n) => n == null ? "—" : n.toLocaleString();
+const relPath = (p) => {
+  const cwd = state.meta.cwd;
+  if (cwd && p.startsWith(cwd + "/")) return p.slice(cwd.length + 1);
+  const home = "/Users/";
+  return p.startsWith(home) ? "~/" + p.split("/").slice(3).join("/") : p;
+};
+const tokens = (chars) => Math.round(chars / 4);
+
+function render() {
+  const m = build();
+  renderTiles(m);
+  renderFiles(m);
+  renderTimeline(m);
+}
+
+function renderTiles(m) {
+  const read = m.files.filter(f => f.readCount);
+  const edited = m.files.filter(f => f.writeCount);
+  const linesRead = read.reduce((a, f) => a + f.coveredLines, 0);
+  const chars = read.reduce((a, f) => a + f.readChars, 0);
+  const before = m.evs.filter(e => e.seq < m.firstEditSeq &&
+                                   (e.kind === "read" || e.kind === "instructions"));
+  const beforeChars = before.reduce((a, e) => a + (e.chars || 0), 0);
+  const pct = chars ? Math.round(beforeChars / chars * 100) : 0;
+  const reReads = read.filter(f => f.maxDepth > 1).length;
+  const readNotEdited = read.filter(f => !f.writeCount).length;
+
+  $("#tiles").innerHTML = [
+    tile("Files read", read.length, `${reReads} re-read, ${readNotEdited} never edited`),
+    tile("Lines read", fmt(linesRead), "distinct lines, current numbering"),
+    tile("Est. tokens read", fmt(tokens(chars)), "chars ÷ 4, excludes blind spots"),
+    tile("Files edited", edited.length, `${fmt(edited.reduce((a, f) => a + f.writtenLines, 0))} lines written`),
+    tile("Before first edit", m.firstEditSeq === Infinity ? "—" : pct + "%",
+         m.firstEditSeq === Infinity ? "no edits yet"
+           : `${fmt(tokens(beforeChars))} tokens over ${before.length} reads`),
+  ].join("");
+}
+const tile = (k, v, n) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="n">${n}</div></div>`;
+
+function renderFiles(m) {
+  const list = m.files.filter(f => f.readCount || f.writeCount)
+                      .sort((a, b) => (b.coveredLines + b.writtenLines) - (a.coveredLines + a.writtenLines));
+  $("#files").hidden = state.table;
+  $("#table").hidden = !state.table;
+  if (!list.length) { $("#files").innerHTML = `<p class="empty">No file activity recorded yet.</p>`; return; }
+
+  $("#tbody").innerHTML = list.map(f => `<tr><td class="mono">${esc(relPath(f.path))}</td>
+    <td>${fmt(f.total)}</td><td>${fmt(f.coveredLines)}</td><td>${f.readCount}</td>
+    <td>${f.maxDepth > 1 ? "×" + f.maxDepth : "—"}</td><td>${fmt(f.writtenLines)}</td>
+    <td>${fmt(tokens(f.readChars))}</td></tr>`).join("");
+
+  $("#files").innerHTML = list.map(f => {
+    const pctRead = f.total ? Math.round(f.coveredLines / f.total * 100) : 0;
+    const segs = f.segments.map(s => {
+      const left = (s.s - 1) / f.total * 100, w = Math.max((s.e - s.s + 1) / f.total * 100, 0.4);
+      const c = `var(${DEPTH[Math.min(s.c, 5) - 1]})`;
+      return `<div class="seg" style="left:${left}%;width:${w}%;background:${c}"
+        data-tip="lines ${s.s}–${s.e} · read ${s.c}×"></div>`;
+    }).join("");
+    const wsegs = f.writes.map(w => {
+      const left = (w.s - 1) / f.total * 100, wd = Math.max((w.e - w.s + 1) / f.total * 100, 0.4);
+      return `<div class="seg" style="left:${left}%;width:${wd}%"
+        data-tip="written ${w.s}–${w.e}${w.precision === "hunk" ? " (±3, hunk bounds)" : ""}"></div>`;
+    }).join("");
+    const flags = [];
+    if (f.instr) flags.push(`<span class="flag" style="color:var(--instr)">instructions · ${esc(f.instr)}</span>`);
+    if (f.maxDepth > 1) flags.push(`<span class="flag">re-read ×${f.maxDepth} — candidate to split</span>`);
+    if (f.readCount && !f.writeCount && !f.instr && pctRead > 60)
+      flags.push(`<span class="flag">read ${pctRead}%, never edited — candidate to trim</span>`);
+    if (f.stale) flags.push(`<span class="flag">rewritten — earlier positions dropped</span>`);
+    return `<div class="file">
+      <div class="hd"><span class="path mono">${esc(relPath(f.path))}</span>
+        <span class="stats num">${fmt(f.total)} lines · ${pctRead}% read · ${f.readCount}r/${f.writeCount}w
+          · ~${fmt(tokens(f.readChars))} tok</span></div>
+      <div class="strip">${segs}</div>
+      ${wsegs ? `<div class="wstrip">${wsegs}</div>` : ""}
+      <div class="axis"><span>1</span><span>${fmt(f.total)}</span></div>
+      ${flags.length ? `<div class="flags">${flags.join("")}</div>` : ""}
+    </div>`;
+  }).join("");
+}
+
+function renderTimeline(m) {
+  const out = [];
+  let turn = null, buf = [];
+  const flush = () => {
+    if (!buf.length) return;
+    out.push(`<div class="turn"><div class="lbl">turn ${turn ? turn.slice(0, 8) : "—"}</div>${buf.join("")}</div>`);
+    buf = [];
+  };
+  for (const e of m.evs) {
+    if (e.kind === "compact") {
+      flush();
+      out.push(`<div class="rule-compact">context compacted${e.trigger ? " · " + esc(e.trigger) : ""}${e.phase === "post" ? " · reloaded below" : ""}</div>`);
+      turn = null;
+      continue;
+    }
+    if (e.kind === "session") {
+      flush();
+      out.push(`<div class="rule-compact" style="color:var(--text-muted)">session ${esc(e.phase)}${e.source ? " · " + esc(e.source) : ""}${e.reason ? " · " + esc(e.reason) : ""}</div>`);
+      turn = null;
+      continue;
+    }
+    if (e.prompt_id !== turn) { flush(); turn = e.prompt_id; }
+    const range = e.kind === "read" ? `${e.start}–${e.end}`
+      : e.kind === "instructions" ? `1–${e.total_lines ?? "?"}`
+      : (e.spans || []).map(s => s.new[1] >= s.new[0] ? `${s.new[0]}–${s.new[1]}` : `@${s.new[0]}`).join(", ");
+    buf.push(`<div class="ev"><span class="chip ${e.kind}">${e.kind === "instructions" ? "instr" : e.kind}</span>
+      <span class="p mono">${esc(relPath(e.path || ""))}</span>
+      ${e.agent_type ? `<span class="badge">${esc(e.agent_type)}</span>` : ""}
+      <span class="r num">${esc(range)}${e.chars ? " · ~" + fmt(tokens(e.chars)) + " tok" : ""}</span></div>`);
+  }
+  flush();
+  // Chronological, oldest first: the point of the timeline is reading the session
+  // forward and seeing what was in context before each edit.
+  $("#timeline").innerHTML = out.length ? out.join("") : `<p class="empty">Nothing yet.</p>`;
+}
+
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+/* ---------------------------------------------------------------- tooltip */
+const tip = $("#tip");
+document.addEventListener("mousemove", (ev) => {
+  const t = ev.target.closest?.("[data-tip]");
+  if (!t) { tip.style.opacity = 0; return; }
+  tip.textContent = t.dataset.tip;
+  tip.style.opacity = 1;
+  tip.style.left = Math.min(ev.clientX + 12, innerWidth - tip.offsetWidth - 8) + "px";
+  tip.style.top = (ev.clientY + 16) + "px";
+});
+
+/* ---------------------------------------------------------------- polling */
+async function loadSessions() {
+  try {
+    const r = await fetch("/api/sessions");
+    const { sessions } = await r.json();
+    if (!state.sid && sessions.length) state.sid = sessions[0].id;
+    $("#sessions").innerHTML = sessions.map(s =>
+      `<option value="${esc(s.id)}" ${s.id === state.sid ? "selected" : ""}>${
+        esc((s.cwd || "").split("/").pop() || s.id.slice(0, 8))} · ${s.id.slice(0, 8)}${s.closed ? " (ended)" : ""}</option>`).join("");
+  } catch { /* server down */ }
+}
+
+async function poll() {
+  if (!state.sid) { await loadSessions(); }
+  if (!state.sid) return;
+  try {
+    const r = await fetch(`/api/events/${encodeURIComponent(state.sid)}?offset=${state.offset}`);
+    const d = await r.json();
+    state.meta = d.meta || {};
+    if (d.events.length) {
+      state.events.push(...d.events);
+      state.offset = d.offset;
+      render();
+    }
+    state.live = !state.meta.closed;
+    $("#live").className = "dot" + (state.live ? "" : " off");
+    $("#cwd").textContent = state.meta.cwd || "";
+    document.title = `${(state.meta.cwd || "").split("/").pop() || "session"} · read/write monitor`;
+  } catch { $("#live").className = "dot off"; }
+}
+
+function toggle(btn, key) {
+  $(btn).addEventListener("click", () => {
+    state[key] = !state[key];
+    $(btn).setAttribute("aria-pressed", String(state[key]));
+    render();
+  });
+}
+toggle("#tSub", "subagents");
+toggle("#tProj", "project");
+toggle("#tTable", "table");
+$("#tTheme").addEventListener("click", () => {
+  const dark = document.documentElement.dataset.theme !== "dark";
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  localStorage.setItem("rwm-theme", dark ? "dark" : "light");
+});
+{
+  const t = new URLSearchParams(location.search).get("theme") || localStorage.getItem("rwm-theme");
+  if (t) document.documentElement.dataset.theme = t;
+}
+$("#sessions").addEventListener("change", (e) => {
+  state.sid = e.target.value; state.offset = 0; state.events = [];
+  history.replaceState({}, "", "/s/" + encodeURIComponent(state.sid));
+  render(); poll();
+});
+
+loadSessions().then(poll);
+setInterval(poll, 1200);
+setInterval(loadSessions, 15000);
+render();
+</script>
+</body>
+</html>
