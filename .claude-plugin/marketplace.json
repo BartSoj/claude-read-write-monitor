@@ -1,0 +1,11 @@
+{
+  "name": "claude-read-write-monitor",
+  "owner": { "name": "BartSoj" },
+  "plugins": [
+    {
+      "name": "read-write-monitor",
+      "source": "./",
+      "description": "Records exact file/line ranges the agent reads and edits, and serves a live per-session dashboard."
+    }
+  ]
+}
