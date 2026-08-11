@@ -1,6 +1,5 @@
 {
   "name": "read-write-monitor",
   "description": "Records exact file/line ranges the agent reads and edits, and serves a live per-session dashboard.",
-  "version": "0.1.0",
-  "author": { "name": "Bart" }
+  "author": { "name": "BartSoj" }
 }

@@ -7,11 +7,34 @@ Design, decisions and research notes live in `~/.syns/read-write-monitoring`.
 
 ## Install
 
-For development, load it for one session:
+The repository is its own marketplace:
+
+```sh
+claude plugin marketplace add BartSoj/claude-read-write-monitor
+claude plugin install read-write-monitor@claude-read-write-monitor --scope user
+```
+
+Or load a working copy for one session, without installing:
 
 ```sh
 claude --plugin-dir ~/IdeaProjects/claude-read-write-monitor
 ```
+
+### Iterating
+
+An installed plugin runs from a **copy** in the plugin cache, so edits to the working copy have
+no effect until they are published:
+
+```sh
+git push
+claude plugin marketplace update claude-read-write-monitor
+claude plugin update read-write-monitor          # restart to apply
+```
+
+`plugin.json` deliberately declares no `version`, so the plugin tracks the resolved commit and
+every push is an update. Add a `version` field only when the release cycle should be pinned.
+
+To iterate without that loop, use `--plugin-dir` on the working copy.
 
 The dashboard URL for the session is printed at session start. The index at
 <http://127.0.0.1:7788> lists every session on this machine and opens the newest.
