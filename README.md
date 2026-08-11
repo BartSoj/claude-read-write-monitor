@@ -28,7 +28,7 @@ no effect until they are published:
 ```sh
 git push
 claude plugin marketplace update claude-read-write-monitor
-claude plugin update read-write-monitor          # restart to apply
+claude plugin update read-write-monitor@claude-read-write-monitor   # restart to apply
 ```
 
 `plugin.json` deliberately declares no `version`, so the plugin tracks the resolved commit and
