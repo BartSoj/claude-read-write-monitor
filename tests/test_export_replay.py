@@ -83,6 +83,12 @@ class BuildTests(unittest.TestCase):
         self.assertEqual(info["steps"], 2)
         self.assertEqual(export_replay.check(html, ["forbidden-word"]), [])
 
+    def test_speed_is_baked_into_the_query_only_when_given(self):
+        html, _ = export_replay.build("sess-1", name="wiki", speed=0.75)
+        self.assertIn("speed=0.75", self.static(html)["query"])
+        html, _ = export_replay.build("sess-1", name="wiki")
+        self.assertNotIn("speed=", self.static(html)["query"])
+
     def test_check_refuses_a_forbidden_word(self):
         html, _ = export_replay.build("sess-1", name="wiki")
         self.assertTrue(export_replay.check(html + "Secret-Word", ["secret-word"]))

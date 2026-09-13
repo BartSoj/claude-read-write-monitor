@@ -6,7 +6,7 @@ optionally, an expectation set, all in one file. It opens from file:// or any st
 paused, and can be driven by a page that frames it (see README, "Static replay export").
 
   export_replay.py <session_id> --out <dir> [--expect <set>] [--tree <dir>] [--name <label>]
-                   [--at <step>] [--reserve <px>] [--keep-dotfiles] [--forbid <word> ...]
+                   [--at <step>] [--reserve <px>] [--keep-dotfiles] [--speed <n>] [--forbid <word> ...]
 
 Paths are rewritten relative to the project, under --name; paths outside it keep only their file
 name. No file content is included: the records never hold any.
@@ -100,7 +100,7 @@ def count_steps(events: list[dict]) -> int:
 
 
 def build(session_id: str, name: str | None = None, tree_dir: str | None = None, expect: str | None = None,
-          at: int = 1, reserve: int = 80, keep_dotfiles: bool = False) -> tuple[str, dict]:
+          at: int = 1, reserve: int = 80, keep_dotfiles: bool = False, speed: float | None = None) -> tuple[str, dict]:
     bundle = serve.export_bundle(session_id)
     if not bundle:
         raise SystemExit(f"no session {session_id} in {serve.sessions_dir()}")
@@ -123,6 +123,8 @@ def build(session_id: str, name: str | None = None, tree_dir: str | None = None,
              "embed": "1", "step": "1", "at": str(at), "reserve": str(reserve)}
     if expect:
         query["expect"] = expect
+    if speed:
+        query["speed"] = f"{speed:g}"
     static = {
         "query": "&".join(f"{k}={v}" for k, v in query.items()),
         "hideDot": not keep_dotfiles,
@@ -167,9 +169,10 @@ def main() -> int:
     ap.add_argument("--at", type=int, default=1, help="step the replay opens at, and returns to on Home (default 1)")
     ap.add_argument("--reserve", type=int, default=80, help="pixels left free at the bottom (default 80)")
     ap.add_argument("--keep-dotfiles", action="store_true", help="show dot-folders such as .claude/")
+    ap.add_argument("--speed", type=float, help="playback speed the replay opens with (default 1; ?speed= overrides)")
     ap.add_argument("--forbid", action="append", default=[], help="fail if this word appears in the output")
     a = ap.parse_args()
-    html, info = build(a.session_id, a.name, a.tree, a.expect, a.at, a.reserve, a.keep_dotfiles)
+    html, info = build(a.session_id, a.name, a.tree, a.expect, a.at, a.reserve, a.keep_dotfiles, a.speed)
     problems = check(html, a.forbid)
     if problems:
         print("not written: " + "; ".join(problems), file=sys.stderr)

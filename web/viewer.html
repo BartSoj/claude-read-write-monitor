@@ -423,8 +423,10 @@ body.embed .wrap { padding-bottom: var(--embed-bottom, 80px) !important; }
       <button data-r="next" title="Next step (→)">step ▶</button>
       <button data-r="end" title="Jump to the end (End)">⏭</button>
       <select data-r="speed" aria-label="Speed">
-        <option value="0.5">×0.5</option><option value="1">×1</option><option value="2">×2</option>
-        <option value="4">×4</option><option value="8">×8</option><option value="16">×16</option>
+        <option value="0.25">×0.25</option><option value="0.5">×0.5</option><option value="0.75">×0.75</option>
+        <option value="1">×1</option><option value="1.5">×1.5</option><option value="2">×2</option>
+        <option value="3">×3</option><option value="4">×4</option><option value="6">×6</option>
+        <option value="8">×8</option><option value="12">×12</option><option value="16">×16</option>
       </select>
       <label class="rp-gaps" title="Cap every wait at one second (G)"><input type="checkbox" data-r="gaps"> skip waits</label>
       <input type="range" data-r="scrub" min="0" max="0" value="0" aria-label="Step">
@@ -510,7 +512,12 @@ body.embed .wrap { padding-bottom: var(--embed-bottom, 80px) !important; }
 const $ = (s) => document.querySelector(s);
 const DEPTH = ["--depth-1","--depth-2","--depth-3","--depth-4","--depth-5"];
 // A static replay export (scripts/export_replay.py) supplies its own query and data.
-const Q = new URLSearchParams(window.RWM_STATIC?.query ?? location.search);
+// The page's own query (e.g. ?autoplay=1&speed=2) overrides what the export baked in.
+const Q = (() => {
+  const q = new URLSearchParams(window.RWM_STATIC?.query ?? "");
+  for (const [k, v] of new URLSearchParams(location.search)) q.set(k, v);
+  return q;
+})();
 const OPENED_AT = Date.now();
 
 const state = {
@@ -2098,6 +2105,14 @@ function rpSetRate(r) {
   rpUi();
 }
 
+// Speeds that + and - (and "faster"/"slower") move between; a speed off the ladder moves to its neighbour.
+const SPEED_LADDER = [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, 6, 8, 12, 16];
+function rpLadder(dir) {
+  const eps = 1e-6;
+  if (dir > 0) return SPEED_LADDER.find(s => s > RP.rate + eps) ?? SPEED_LADDER[SPEED_LADDER.length - 1];
+  return [...SPEED_LADDER].reverse().find(s => s < RP.rate - eps) ?? SPEED_LADDER[0];
+}
+
 function rpSetSkip(on) {
   RP.skipWaits = on;
   rpTimeline();
@@ -2124,7 +2139,7 @@ function rpUi() {
   // A page framing this replay hears where it is after every change.
   if (window.parent !== window) {
     const s = tvExpectScore();
-    const msg = { type: "rwm", event: "state", step: done, total, playing: RP.playing,
+    const msg = { type: "rwm", event: "state", step: done, total, playing: RP.playing, speed: RP.rate,
                   expectedReads: s ? [s.rOk, s.r.length] : null, expectedWrites: s ? [s.wOk, s.w.length] : null };
     const key = JSON.stringify(msg);
     if (key !== rpUi.last) { rpUi.last = key; window.parent.postMessage(msg, "*"); }
@@ -2148,8 +2163,9 @@ async function startReplay(bundle) {
   RP.on = true; RP.bundle = bundle;
   RP.all = (bundle.events || []).filter(e => e && e.ts);
   RP.pos = 0;
-  RP.rate = Math.max(0.05, parseFloat(Q.get("speed") || "1"));
-  RP.skipWaits = Q.get("gaps") === "skip";
+  RP.rate = Math.min(64, Math.max(0.05, parseFloat(Q.get("speed") || "1") || 1));
+  // Autoplay and embeds skip long waits unless the page says otherwise.
+  RP.skipWaits = Q.has("gaps") ? Q.get("gaps") === "skip" : (Q.get("autoplay") === "1" || Q.get("embed") === "1");
   rpTimeline();
   state.replay = bundle.id || "file";
   state.sid = bundle.id || null;
@@ -2173,7 +2189,7 @@ async function startReplay(bundle) {
   TV.listing = null;
   await tvLoad(state.meta.project || state.meta.cwd, { events: RP.all });
   rpSeek(rpHome());
-  if (Q.get("step") !== "1") rpPlay();
+  if (Q.get("autoplay") === "1" || Q.get("step") !== "1") rpPlay();
 }
 
 // Where a replay starts and where Home returns: before any step, or at step `at` when given.
@@ -2254,6 +2270,13 @@ $("#projects").addEventListener("change", (e) => {
   state.agg = null; loadSessions(); if (state.tab === "project") loadAggregate();
 });
 document.addEventListener("keydown", (ev) => {
+  // Framed in a deck, the deck owns the keyboard: every key goes to it and none is handled here.
+  if (window.parent !== window) {
+    ev.preventDefault();
+    window.parent.postMessage({ type: "rwm", event: "key", key: ev.key, code: ev.code, shiftKey: ev.shiftKey,
+                                altKey: ev.altKey, metaKey: ev.metaKey, ctrlKey: ev.ctrlKey }, "*");
+    return;
+  }
   if (ev.target.closest?.("input, select, textarea") || ev.metaKey || ev.ctrlKey || ev.altKey) return;
   if (ev.key === "Escape") {
     if (TV.editing) tvEditClose(TV.editing.prev); else tvPanelClose();
@@ -2272,8 +2295,8 @@ document.addEventListener("keydown", (ev) => {
   if (ev.key === "End") { ev.preventDefault(); rpPause(); rpSeek(RP.all.length); }
   if (ev.key === "r") { rpSeek(0); rpPlay(); }
   if (ev.key === "g") rpSetSkip(!RP.skipWaits);
-  if (ev.key === "+" || ev.key === "=") rpSetRate(Math.min(64, RP.rate * 2));
-  if (ev.key === "-") rpSetRate(Math.max(0.25, RP.rate / 2));
+  if (ev.key === "+" || ev.key === "=") rpSetRate(rpLadder(1));
+  if (ev.key === "-") rpSetRate(rpLadder(-1));
 });
 
 for (const b of document.querySelectorAll("[data-layout]")) b.addEventListener("click", () => tvSetLayout(b.dataset.layout));
@@ -2331,10 +2354,19 @@ const EMBED_CMDS = {
   next: () => rpStep(1), prev: () => rpStep(-1),
   home: () => { rpPause(); rpSeek(rpHome()); }, end: () => { rpPause(); rpSeek(RP.all.length); },
   play: () => rpPlay(), pause: () => rpPause(), toggle: () => (RP.playing ? rpPause() : rpPlay()),
+  faster: () => rpSetRate(rpLadder(1)), slower: () => rpSetRate(rpLadder(-1)),
 };
 addEventListener("message", (ev) => {
   const d = ev.data;
-  if (d && d.type === "rwm" && RP.on && Object.hasOwn(EMBED_CMDS, d.cmd)) EMBED_CMDS[d.cmd]();
+  if (!d || d.type !== "rwm" || !RP.on || typeof d.cmd !== "string") return;
+  const speed = /^speed:(\d+(?:\.\d+)?)$/.exec(d.cmd);
+  if (speed) rpSetRate(Math.min(64, Math.max(0.05, parseFloat(speed[1]))));
+  else if (Object.hasOwn(EMBED_CMDS, d.cmd)) EMBED_CMDS[d.cmd]();
+});
+// Framed, a click must not keep the keyboard here: focus goes straight back to the deck.
+addEventListener("pointerdown", () => {
+  if (window.parent === window) return;
+  setTimeout(() => { document.activeElement?.blur?.(); try { window.parent.focus(); } catch (e) {} }, 0);
 });
 
 (async () => {

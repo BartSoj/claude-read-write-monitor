@@ -205,7 +205,7 @@ from disk, host it on any static site, or frame it in slides.
 
 ```sh
 python3 scripts/export_replay.py <session_id> --out replays/demo --expect <set> \
-    [--tree <folder>] [--name <label>] [--at 1] [--reserve 80] [--keep-dotfiles] [--forbid <word>]
+    [--tree <folder>] [--name <label>] [--at 1] [--reserve 80] [--keep-dotfiles] [--speed <n>] [--forbid <word>]
 ```
 
 - **What goes in:** the viewer, the session's records, the file tree, and the expectation set. No
@@ -218,16 +218,22 @@ python3 scripts/export_replay.py <session_id> --out replays/demo --expect <set> 
   Dot-folders such as `.claude/` are hidden; what the session did in them still counts.
 - **What it looks like:** the Tree view in map layout, stage palette and projector sizes, with no
   header or tool bars. `--reserve` pixels stay free at the bottom, for a caption. It opens paused at
-  step `--at`.
+  step `--at`, at speed `--speed` (default ×1), with every wait capped at one second.
+- **Page query:** the file's own query overrides what was baked in: `index.html?autoplay=1` plays from
+  the opening step, `?speed=<n>` sets the speed, `?gaps=full` keeps the recorded waits.
 - **Refusals:** the export will not write a file that contains your home directory path or any
   `--forbid` word.
 
 **Embedding.** A page that frames the replay drives it with
 `iframe.contentWindow.postMessage({type: "rwm", cmd}, "*")`, where `cmd` is `next`, `prev`, `home`
-(back to the opening step), `end`, `play`, `pause` or `toggle`. After every change the replay posts
-`{type: "rwm", event: "state", step, total, playing, expectedReads: [done, of], expectedWrites: [done, of]}`
-to its parent. It also answers its own keys when focused (`→` `←` `Space` `Home` `End`), and `Esc`
-gives focus back.
+(back to the opening step), `end`, `play`, `pause`, `toggle`, `faster`, `slower` or `speed:<n>`.
+`faster` and `slower` move along ×0.25 ×0.5 ×0.75 ×1 ×1.5 ×2 ×3 ×4 ×6 ×8 ×12 ×16. After every change the
+replay posts
+`{type: "rwm", event: "state", step, total, playing, speed, expectedReads: [done, of], expectedWrites: [done, of]}`
+to its parent. Framed, the replay handles no keys: every keydown is cancelled and posted to the parent
+as `{type: "rwm", event: "key", key, code, shiftKey, altKey, metaKey, ctrlKey}`, and a click inside
+hands focus back, so the framing page stays the only keyboard owner. Opened on its own, it answers
+`→` `←` `Space` `Home` `End` `+` `-`.
 
 ### Projector mode
 
