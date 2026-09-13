@@ -674,7 +674,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._file("viewer.html")
         if p == "/health":
             return self._json({"ok": True, "port": PORT, "data": data_dir(),
-                               "api": API_VERSION, "code": HERE})
+                               "api": API_VERSION, "code": HERE, "pid": os.getpid()})
         if p == "/api/config":
             return self._json(config())
         if p == "/api/sessions":
@@ -782,28 +782,61 @@ def pid_path() -> str:
 
 def run() -> int:
     os.makedirs(sessions_dir(), exist_ok=True)
+    # Bind before claiming the pid file: a start that loses the port to a running server must not
+    # overwrite that server's pid, or nothing can stop it later.
+    srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    srv.daemon_threads = True
     with open(pid_path(), "w") as f:
         f.write(str(os.getpid()))
     threading.Thread(target=_idle_watchdog, daemon=True).start()
     # Parse every session's metadata once up front, so the first page load after a start
     # does not pay for thousands of meta.json files.
     threading.Thread(target=list_sessions, daemon=True).start()
-    srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    srv.daemon_threads = True
     srv.serve_forever()
     return 0
 
 
-def stop() -> bool:
+def _listening_pid() -> int | None:
+    """The process listening on PORT, when it is one of ours: servers from before the pid moved into
+    /health left only a pid file, which an earlier failed start may have overwritten."""
     try:
-        pid = int(open(pid_path()).read().strip())
-        os.kill(pid, signal.SIGTERM)
+        out = subprocess.run(["lsof", "-ti", f"tcp:{PORT}", "-sTCP:LISTEN"],
+                             capture_output=True, text=True, timeout=3).stdout.split()
+        for token in out:
+            pid = int(token)
+            cmd = subprocess.run(["ps", "-o", "command=", "-p", str(pid)],
+                                 capture_output=True, text=True, timeout=3).stdout
+            if "serve.py" in cmd:
+                return pid
     except Exception:
-        return False
-    for _ in range(30):
-        if not is_up():
-            return True
-        time.sleep(0.1)
+        pass
+    return None
+
+
+def stop() -> bool:
+    candidates = []
+    try:
+        import urllib.request
+        with urllib.request.urlopen(f"http://127.0.0.1:{PORT}/health", timeout=2) as r:
+            candidates.append(int(json.load(r)["pid"]))
+    except Exception:
+        pass
+    try:
+        candidates.append(int(open(pid_path()).read().strip()))
+    except Exception:
+        pass
+    listening = _listening_pid()
+    if listening:
+        candidates.append(listening)
+    for pid in dict.fromkeys(candidates):
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            continue
+        for _ in range(30):
+            if not is_up():
+                return True
+            time.sleep(0.1)
     return not is_up()
 
 
