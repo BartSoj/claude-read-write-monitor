@@ -784,8 +784,8 @@ function tvGroupFor(rel) {
 
 function tvSizes() {
   const P = document.body.classList.contains("projector");
-  return P ? { lh: 34, nh: 32, pad: 10, gapX: 16, gapY: 14, gap: 5, tMax: 46, tMin: 5 }
-           : { lh: 20, nh: 18, pad: 7, gapX: 10, gapY: 10, gap: 3, tMax: 26, tMin: 4 };
+  return P ? { lh: 34, nh: 32, pad: 10, gapX: 16, gapY: 14, gap: 5, tMax: 46, tMin: 5, colMin: 420 }
+           : { lh: 20, nh: 18, pad: 7, gapX: 10, gapY: 10, gap: 3, tMax: 26, tMin: 4, colMin: 260 };
 }
 
 // Choose the largest tile size, and the column count, that fits every group on screen.
@@ -815,7 +815,9 @@ function tvFit(W, H) {
       if (columnsFor(heights(colW, t), H).length <= cols && Math.max(...heights(colW, t)) <= H) { fit = t; lo = t + 1; }
       else hi = t - 1;
     }
-    if (fit && (!best || fit > best.t)) best = { cols, colW, t: fit };
+    // Largest tiles win. A small project reaches the size cap at every column count; then
+    // more columns, down to a readable width, keep groups from stretching across the screen.
+    if (fit && (!best || fit > best.t || (fit === S.tMax && colW >= S.colMin))) best = { cols, colW, t: fit };
   }
   if (!best) best = { cols: Math.max(1, Math.floor(W / 240)), colW: 0, t: S.tMin, overflow: true };
   if (!best.colW) best.colW = (W - (best.cols - 1) * S.gapX) / best.cols;
@@ -1171,7 +1173,7 @@ function tvCounters() {
     cell("", "lines read · written", `<span style="color:var(--read-ink)">${fmt(C.linesRead)}</span><small> · </small><span style="color:var(--write-ink)">${fmt(C.linesWritten)}</span>`),
     cell("instr", "instructions", share == null ? "—" : `${share}%<small> of reading</small>`),
     cell("", "first edit", TV.firstEditTs == null ? `—<small>${TV.readBeforeEdit ? ` ${TV.readBeforeEdit} files read` : ""}</small>`
-      : `${clock(TV.firstEditTs - t0)}<small> after ${TV.readBeforeEdit} files</small>`),
+      : `${clock(TV.firstEditTs - t0)}<small> · ${TV.readBeforeEdit} read</small>`),
     cell("", "elapsed", t0 == null ? "—" : clock(end - t0)),
   ].join("");
   // The ticker fades when the agent has gone quiet, so a stale file is not mistaken for current.

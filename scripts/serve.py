@@ -601,6 +601,9 @@ def run() -> int:
     with open(pid_path(), "w") as f:
         f.write(str(os.getpid()))
     threading.Thread(target=_idle_watchdog, daemon=True).start()
+    # Parse every session's metadata once up front, so the first page load after a start
+    # does not pay for thousands of meta.json files.
+    threading.Thread(target=list_sessions, daemon=True).start()
     srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     srv.daemon_threads = True
     srv.serve_forever()
