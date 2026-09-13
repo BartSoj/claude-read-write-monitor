@@ -359,6 +359,8 @@ body.projector .tv-panel { font-size: 20px; width: min(780px, 44vw); }
 .tvp-bar i.w { top: 55%; height: 45%; background: var(--write); }
 .tvp-axis { display: flex; justify-content: space-between; font-size: .8em; color: var(--text-muted); margin-top: 3px; }
 .tvp-actions { margin-top: 18px; }
+body.embed header.top, body.embed .tv-tools, body.embed #tvEditArea, body.embed .tv-replay { display: none !important; }
+body.embed .wrap { padding-bottom: var(--embed-bottom, 80px) !important; }
 </style>
 </head>
 <body>
@@ -507,7 +509,8 @@ body.projector .tv-panel { font-size: 20px; width: min(780px, 44vw); }
 <script>
 const $ = (s) => document.querySelector(s);
 const DEPTH = ["--depth-1","--depth-2","--depth-3","--depth-4","--depth-5"];
-const Q = new URLSearchParams(location.search);
+// A static replay export (scripts/export_replay.py) supplies its own query and data.
+const Q = new URLSearchParams(window.RWM_STATIC?.query ?? location.search);
 const OPENED_AT = Date.now();
 
 const state = {
@@ -1120,6 +1123,11 @@ function tvRel(abs) {
 
 function tvFile(abs, { create = false, ghost = false } = {}) {
   const rel = tvRel(abs);
+  // An export that hides dot-folders still counts what the session did in them, without tiles.
+  if (rel != null && window.RWM_STATIC?.hideDot && rel.split("/").some(s => s.startsWith("."))) {
+    if (!TV.outside.has(rel)) TV.outside.set(rel, Object.assign(tvBlank(rel, null, null), { hidden: true }));
+    return TV.outside.get(rel);
+  }
   if (rel == null) {
     if (!TV.outside.has(abs)) TV.outside.set(abs, tvBlank(abs, null, null));
     return TV.outside.get(abs);
@@ -1320,7 +1328,7 @@ function tvApply(e) {
       st.main = true;
       const firstRead = !C.read.has(st.rel);
       C.read.add(st.rel);
-      if (st.group == null) C.outsideRead.add(st.rel);
+      if (st.group == null && !st.hidden) C.outsideRead.add(st.rel);
       if (TV.firstEditTs == null && firstRead) TV.readBeforeEdit++;
       C.linesRead += addRange(st, s, en);
       C.readChars += e.chars || 0;
@@ -1460,6 +1468,7 @@ function tvExpectUse(name, { keepUrl = false } = {}) {
   for (const st of TV.files.values()) tvPaint(st);
   tvCounters();
   tvPanelRender();
+  if (RP.on) rpUi();
 }
 
 function tvExpectMark() { for (const st of TV.files.values()) tvExpectMarkOne(st); }
@@ -1643,8 +1652,8 @@ function tvCounters() {
       cell("", "untouched", `${fmt(Math.max(0, total - touched))}`),
       cell("", "lines read / written", `<span style="color:var(--read-ink)">${fmt(C.linesRead)}</span><small> / <span style="color:var(--write-ink)">${fmt(C.linesWritten)}</span></small>`),
     ]),
-    cell("instr", "instructions", share == null ? "—" : `${share}%<small> of reading</small>`),
-    cell("", "first edit", TV.firstEditTs == null ? `—<small>${TV.readBeforeEdit ? ` ${TV.readBeforeEdit} files read` : ""}</small>`
+    cell("instr", "instructions", share == null ? "—" : `${share}%<small> of reads</small>`),
+    cell("", "first edit", TV.firstEditTs == null ? `—<small>${TV.readBeforeEdit ? ` ${TV.readBeforeEdit} file${TV.readBeforeEdit === 1 ? "" : "s"} read` : ""}</small>`
       : `${clock(TV.firstEditTs - t0)}<small> · ${TV.readBeforeEdit} read</small>`),
     cell("", "elapsed", t0 == null ? "—" : clock(end - t0)),
   ].join("");
@@ -2112,6 +2121,14 @@ function rpUi() {
   const badge = $("#tvTicker .tv-badge");
   badge.hidden = false;
   badge.textContent = RP.playing ? `replay ×${RP.rate}` : `replay · step ${done}/${total}`;
+  // A page framing this replay hears where it is after every change.
+  if (window.parent !== window) {
+    const s = tvExpectScore();
+    const msg = { type: "rwm", event: "state", step: done, total, playing: RP.playing,
+                  expectedReads: s ? [s.rOk, s.r.length] : null, expectedWrites: s ? [s.wOk, s.w.length] : null };
+    const key = JSON.stringify(msg);
+    if (key !== rpUi.last) { rpUi.last = key; window.parent.postMessage(msg, "*"); }
+  }
 }
 
 function rpStop() {
@@ -2155,8 +2172,14 @@ async function startReplay(bundle) {
   tvExportLink();
   TV.listing = null;
   await tvLoad(state.meta.project || state.meta.cwd, { events: RP.all });
-  rpUi();
+  rpSeek(rpHome());
   if (Q.get("step") !== "1") rpPlay();
+}
+
+// Where a replay starts and where Home returns: before any step, or at step `at` when given.
+function rpHome() {
+  const at = parseInt(Q.get("at") || "0", 10);
+  return at > 0 && RP.frames.length ? RP.frames[Math.min(at, RP.frames.length) - 1] + 1 : 0;
 }
 
 async function replay(sid) {
@@ -2232,7 +2255,11 @@ $("#projects").addEventListener("change", (e) => {
 });
 document.addEventListener("keydown", (ev) => {
   if (ev.target.closest?.("input, select, textarea") || ev.metaKey || ev.ctrlKey || ev.altKey) return;
-  if (ev.key === "Escape") { if (TV.editing) tvEditClose(TV.editing.prev); else tvPanelClose(); }
+  if (ev.key === "Escape") {
+    if (TV.editing) tvEditClose(TV.editing.prev); else tvPanelClose();
+    // Framed in a deck, Escape hands the keyboard back instead of keeping focus here.
+    if (window.parent !== window) { document.activeElement?.blur?.(); window.blur(); }
+  }
   if (ev.key === "p") setProjector(!document.body.classList.contains("projector"));
   if (ev.key === "t") setTab("tree");
   if (ev.key === "l" && state.tab === "tree") tvSetLayout(TV.layout === "map" ? "outline" : "map");
@@ -2241,7 +2268,7 @@ document.addEventListener("keydown", (ev) => {
   if (ev.key === " ") { ev.preventDefault(); RP.playing ? rpPause() : rpPlay(); }
   if (ev.key === "ArrowRight") { ev.preventDefault(); rpStep(1); }
   if (ev.key === "ArrowLeft") { ev.preventDefault(); rpStep(-1); }
-  if (ev.key === "Home") { ev.preventDefault(); rpPause(); rpSeek(0); }
+  if (ev.key === "Home") { ev.preventDefault(); rpPause(); rpSeek(rpHome()); }
   if (ev.key === "End") { ev.preventDefault(); rpPause(); rpSeek(RP.all.length); }
   if (ev.key === "r") { rpSeek(0); rpPlay(); }
   if (ev.key === "g") rpSetSkip(!RP.skipWaits);
@@ -2267,7 +2294,7 @@ $("#tvReplayBtn").addEventListener("click", () => {
 $("#tvImport").addEventListener("change", (e) => { if (e.target.files[0]) replayFile(e.target.files[0]); e.target.value = ""; });
 $("#tvReplay").addEventListener("click", (ev) => {
   const r = ev.target.closest?.("button[data-r]")?.dataset.r;
-  if (r === "start") { rpPause(); rpSeek(0); }
+  if (r === "start") { rpPause(); rpSeek(rpHome()); }
   if (r === "prev") rpStep(-1);
   if (r === "play") RP.playing ? rpPause() : rpPlay();
   if (r === "next") rpStep(1);
@@ -2299,6 +2326,17 @@ $("#tvPanel").addEventListener("click", (ev) => {
   }
 });
 
+// A page framing a replay drives it: postMessage({type: "rwm", cmd}) with one of these commands.
+const EMBED_CMDS = {
+  next: () => rpStep(1), prev: () => rpStep(-1),
+  home: () => { rpPause(); rpSeek(rpHome()); }, end: () => { rpPause(); rpSeek(RP.all.length); },
+  play: () => rpPlay(), pause: () => rpPause(), toggle: () => (RP.playing ? rpPause() : rpPlay()),
+};
+addEventListener("message", (ev) => {
+  const d = ev.data;
+  if (d && d.type === "rwm" && RP.on && Object.hasOwn(EMBED_CMDS, d.cmd)) EMBED_CMDS[d.cmd]();
+});
+
 (async () => {
   try { state.config = await (await fetch("/api/config")).json(); } catch {}
   TV.instrRes = (state.config.instruction_files || []).map(globRe);
@@ -2311,6 +2349,11 @@ $("#tvPanel").addEventListener("click", (ev) => {
   const view = Q.get("view") || Q.get("tab") || (state.follow || state.replay ? "tree" : "session");
   setTab(["tree", "session", "project"].includes(view) ? view : "session");
   if (["1", "true", "on"].includes(Q.get("projector") || "")) setProjector(true);
+  // Embedded in a slide: only the ticker, counters, map and legend, with a row left free below.
+  if (["1", "true", "on"].includes(Q.get("embed") || "")) {
+    document.body.classList.add("embed");
+    if (/^\d+$/.test(Q.get("reserve") || "")) document.body.style.setProperty("--embed-bottom", Q.get("reserve") + "px");
+  }
 
   if (state.replay === "file") {
     tvTicker("idle", "", "open the replay file again to play it", "");

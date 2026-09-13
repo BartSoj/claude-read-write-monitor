@@ -198,6 +198,37 @@ write index.md
 
 Paths are relative to `root`; a set without `root` is offered for every project.
 
+### Static replay export
+
+A recorded session can become one self-contained `index.html` that replays with no server: open it
+from disk, host it on any static site, or frame it in slides.
+
+```sh
+python3 scripts/export_replay.py <session_id> --out replays/demo --expect <set> \
+    [--tree <folder>] [--name <label>] [--at 1] [--reserve 80] [--keep-dotfiles] [--forbid <word>]
+```
+
+- **What goes in:** the viewer, the session's records, the file tree, and the expectation set. No
+  file content, since the records hold none.
+- **Paths:** rewritten relative to the project, under `--name` (default: the folder name). Anything
+  outside the project keeps only its file name. The host-specific fields `cwd`, `model` and
+  `transcript_path` are dropped.
+- **The tree:** the listing of `--tree`. By default that is the project as it is now; give a folder
+  holding its state at recording time to show that. Files the session created still animate in.
+  Dot-folders such as `.claude/` are hidden; what the session did in them still counts.
+- **What it looks like:** the Tree view in map layout, stage palette and projector sizes, with no
+  header or tool bars. `--reserve` pixels stay free at the bottom, for a caption. It opens paused at
+  step `--at`.
+- **Refusals:** the export will not write a file that contains your home directory path or any
+  `--forbid` word.
+
+**Embedding.** A page that frames the replay drives it with
+`iframe.contentWindow.postMessage({type: "rwm", cmd}, "*")`, where `cmd` is `next`, `prev`, `home`
+(back to the opening step), `end`, `play`, `pause` or `toggle`. After every change the replay posts
+`{type: "rwm", event: "state", step, total, playing, expectedReads: [done, of], expectedWrites: [done, of]}`
+to its parent. It also answers its own keys when focused (`→` `←` `Space` `Home` `End`), and `Esc`
+gives focus back.
+
 ### Projector mode
 
 `?projector=1`, the Projector button, or `p`. Hides the header, enlarges the ticker, counters and
