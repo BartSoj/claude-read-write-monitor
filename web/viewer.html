@@ -717,6 +717,7 @@ function tvReset() {
   for (const st of TV.files.values()) {
     if (st.created) { st.el?.remove(); TV.files.delete(st.rel); continue; }
     Object.assign(st, tvBlank(st.rel, st.group, st.el));
+    st.instr = isInstr(st.rel);   // a property of the file, not of the session
     tvPaint(st);
   }
   TV.outside = new Map(); TV.pendingById = new Map(); TV.lastInstr = {};
@@ -1071,7 +1072,8 @@ function tvApply(e) {
       const st = tvFile(e.path, { create: true });
       if (!st) return;
       st.ghost = false;
-      if (e.mode === "create" && st.group) { st.created = true; C.created.add(st.rel); }
+      // A shell write cannot say whether the file existed; a tile inserted for it is new.
+      if ((e.mode === "create" || st.created) && st.group) { st.created = true; C.created.add(st.rel); }
       st.writes++;
       st.total = Math.max(st.total, e.total_lines_after || 0);
       if (sub) st.sub = true; else st.main = true;
@@ -1083,7 +1085,9 @@ function tvApply(e) {
       tvPaint(st);
       tvTouchGroup(st, "w");
       const n = e.lines_written || 0;
-      tvCurrent(st, "write", e.path, e.mode === "create" ? `new · ${fmt(n)} lines` : `${fmt(n)} line${n === 1 ? "" : "s"}`, e);
+      const lines = `${fmt(n)} line${n === 1 ? "" : "s"}`;
+      tvCurrent(st, "write", e.path, e.source === "bash" ? `shell · ${e.mode || "write"}${n ? " · " + lines : ""}`
+        : e.mode === "create" ? `new · ${lines}` : lines, e);
       tvLit(e);
       return;
     }
@@ -1170,7 +1174,7 @@ function tvCounters() {
     cell("read", "files read", `${fmt(inTree)}<small> / ${fmt(total)}${C.outsideRead.size ? ` +${C.outsideRead.size} outside` : ""}</small>`),
     cell("write", "files written", `${fmt(C.written.size)}<small>${C.created.size ? ` · ${C.created.size} new` : ""}</small>`),
     cell("", "untouched", `${fmt(Math.max(0, total - touched))}`),
-    cell("", "lines read · written", `<span style="color:var(--read-ink)">${fmt(C.linesRead)}</span><small> · </small><span style="color:var(--write-ink)">${fmt(C.linesWritten)}</span>`),
+    cell("", "lines read / written", `<span style="color:var(--read-ink)">${fmt(C.linesRead)}</span><small> / <span style="color:var(--write-ink)">${fmt(C.linesWritten)}</span></small>`),
     cell("instr", "instructions", share == null ? "—" : `${share}%<small> of reading</small>`),
     cell("", "first edit", TV.firstEditTs == null ? `—<small>${TV.readBeforeEdit ? ` ${TV.readBeforeEdit} files read` : ""}</small>`
       : `${clock(TV.firstEditTs - t0)}<small> · ${TV.readBeforeEdit} read</small>`),
