@@ -389,7 +389,82 @@ def on_bash(d: dict, base: dict) -> list[dict]:
                         "files": files, "n": len(files),
                         "files_only": act["op"] == "list" or bool(act.get("files_only"))})
         out.append(clean(rec))
+
+    # A command can change files the parser cannot name: a Python heredoc, a formatter, git.
+    # Whatever changed on disk while it ran is a write too, recorded once.
+    named = {r.get("path") for r in out if r.get("kind") in ("edit", "write")}
+    for path in bash_changed_files(d):
+        if path in named:
+            continue
+        after = shell_reads.resolve_read({"op": "read", "cmd": "cat", "path": path,
+                                          "start": None, "end": None, "from_end": None})
+        rec = dict(base)
+        rec.update({"kind": "edit", "source": "bash", "cmd": "changed on disk", "path": path,
+                    "mode": "changed", "precision": "mtime", "tool_use_id": d.get("tool_use_id"),
+                    "total_lines_after": after.get("total_lines") if after else None})
+        out.append(clean(rec))
     return out
+
+
+# Time allowed between a Bash command finishing and its PostToolUse hook starting to look.
+SCAN_SLACK_MS = 1500
+
+
+def changed_since(root: str, rels: list[str], since_ms: int, until_ms: int) -> list[str]:
+    """Files under `root` whose modification time falls in [since_ms, until_ms]."""
+    out = []
+    for rel in rels:
+        path = os.path.normpath(os.path.join(root, rel))
+        try:
+            mtime = os.stat(path).st_mtime_ns // 1_000_000
+        except OSError:
+            continue
+        if since_ms <= mtime <= until_ms:
+            out.append(path)
+    return out
+
+
+def recent_writes(session_id: str, since_ms: int, tool_use_id: str | None) -> set[str]:
+    """Paths this session already recorded as written since `since_ms` by another tool call."""
+    path = os.path.join(session_dir(session_id), "events.jsonl")
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - 65536))
+            tail = f.read().decode("utf-8", errors="replace").splitlines()
+    except OSError:
+        return set()
+    seen = set()
+    for line in tail:
+        try:
+            e = json.loads(line)
+        except Exception:
+            continue
+        if (e.get("kind") in ("edit", "write") and (e.get("ts") or 0) >= since_ms
+                and e.get("tool_use_id") != tool_use_id):
+            seen.add(e.get("path"))
+    return seen
+
+
+def bash_changed_files(d: dict) -> list[str]:
+    """Project files a Bash command changed, whatever wrote them, found by modification time in
+    the command's own window. Runs in the async PostToolUse hook, after the command has finished.
+    Off with RWM_BASH_WRITE_SCAN=0; skipped when the project cannot be listed quickly and whole."""
+    if os.environ.get("RWM_BASH_WRITE_SCAN", "1").strip().lower() in ("0", "false", "no", "off"):
+        return []
+    cwd, duration = d.get("cwd"), d.get("duration_ms")
+    if not cwd or not os.path.isdir(cwd) or not isinstance(duration, (int, float)):
+        return []
+    import tree
+    now = int(time.time() * 1000)
+    since = now - int(duration) - SCAN_SLACK_MS
+    root = git_root(cwd) or cwd
+    listing = tree.list_tree(root, budget_s=0.5)
+    if not listing.get("complete"):
+        return []   # a partial listing would report some changes and silently miss others
+    skip = recent_writes(d.get("session_id") or "", since, d.get("tool_use_id"))
+    # A second of slack past now covers filesystem timestamps that run slightly ahead.
+    return [p for p in changed_since(root, listing["files"], since, now + 1000) if p not in skip]
 
 
 def on_pending(d: dict, base: dict) -> list[dict]:

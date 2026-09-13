@@ -408,10 +408,11 @@ def _read_gitignore(directory: str) -> List[_Rule]:
     return _parse_patterns(data.decode("utf-8-sig", errors="replace").splitlines())
 
 
-def _walk(root: str, max_entries: int, extras: _RuleSet) -> Tuple[List[str], bool]:
+def _walk(root: str, max_entries: int, extras: _RuleSet,
+          budget_s: Optional[float] = None) -> Tuple[List[str], bool]:
     limit = max(max_entries * 20, _WALK_FILE_FLOOR)
     started = time.monotonic()
-    budget = _WALK_TIME_BUDGET
+    budget = _WALK_TIME_BUDGET if budget_s is None else budget_s
     files: List[str] = []
     # (dir relative to root, .gitignore rulesets in effect, shallowest first)
     queue = deque([("", ())])  # type: deque
@@ -494,8 +495,10 @@ def _cap(files: List[str], max_entries: int) -> Tuple[List[str], Dict[str, int]]
     return sorted(by_depth[:max_entries]), dict(sorted(omitted.items()))
 
 
-def list_tree(root: str, max_entries: int | None = None, extra_ignores: list[str] | None = None) -> dict:
-    """List the files under `root` (names only, never contents).
+def list_tree(root: str, max_entries: int | None = None, extra_ignores: list[str] | None = None,
+              budget_s: float | None = None) -> dict:
+    """List the files under `root` (names only, never contents). `budget_s` shortens the walk's
+    time budget (default 3 s) for callers that must stay quick, such as a hook.
 
     Returns {
       "root": root (as given, absolute, no trailing slash),
@@ -526,7 +529,7 @@ def list_tree(root: str, max_entries: int | None = None, extra_ignores: list[str
             complete = True
             files = _filter_paths(tracked, [extras]) + _filter_paths(untracked, [extras, _DEFAULT_RULESET])
         else:
-            files, complete = _walk(root, max_entries, extras)
+            files, complete = _walk(root, max_entries, extras, budget_s)
 
     total = len(files)
     kept, omitted = _cap(files, max_entries)
