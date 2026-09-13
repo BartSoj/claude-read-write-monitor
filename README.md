@@ -88,6 +88,12 @@ ticker and a callout above its tile. A counter strip shows files read, written a
 read and written, instruction files' share of all reading, when the first edit came and how many files
 had been read by then, and elapsed time. The footer holds the legend and what the view cannot see.
 
+Two layouts, switched with the Map / Outline buttons or `l`: **Map** packs folders as blocks side by
+side; **Outline** puts every folder on its own row, one under another and indented by depth, with its
+files as one run of tiles that wraps at the edge of the screen. Hover a tile for the file's path and
+the line ranges read and written; click it for a panel listing every read, write and search match in
+order, with the time, the exact lines and the tool or shell command that did it.
+
 **Session** — coverage strips per file (read ranges shaded by re-read depth, written ranges
 alongside), summary tiles, and a chronological timeline grouped by turn with compaction
 boundaries. Searches sit in their own indented lane, and shell-inferred records carry a `shell`
@@ -110,11 +116,14 @@ instructions into a fresh context.
 | `?view=tree\|session\|project` | a view (`?tab=` still works) |
 | `?project=<abs path>` | a project in the picker and the Project view |
 | `?follow=<abs path>` | follow mode, below |
-| `?replay=<session_id>&speed=<n>&maxgap=<s>` | replay, below |
+| `?replay=<session_id>&speed=<n>&step=1&gaps=skip` | replay, below |
+| `?layout=map\|outline` | a Tree view layout (remembered per browser) |
+| `?expect=<name>` | an expectation set, below |
 | `?projector=1` | projector mode, below |
 | `?theme=light\|dark\|stage` | a theme |
 
-Keys: `t` opens the Tree view, `p` toggles projector mode.
+Keys: `t` opens the Tree view, `p` toggles projector mode, `l` switches layout, `h` hides the tool
+and replay bars, `Esc` closes the file panel.
 
 ### Follow mode
 
@@ -132,12 +141,60 @@ project by hand ends following for that page.
 ### Replay
 
 ```
-http://127.0.0.1:7788/?replay=<session_id>&speed=4&maxgap=3
+http://127.0.0.1:7788/?replay=<session_id>&speed=4
 ```
 
-Plays a recorded session back on the Tree view at its original pace, divided by `speed`. `maxgap`
-caps any pause between records at that many seconds. Playback starts just before the first prompt.
-Space pauses, `r` restarts, `+` and `-` double or halve the speed.
+Any recorded session plays back on the Tree view, from the **Replay** button or the URL. It plays at
+its original pace divided by `speed`, starting just before the first prompt, or one **step** at a
+time: a step is one read, search or write, so stepping skips every wait in between. `step=1` opens
+paused at the start; `gaps=skip` caps each wait at one second while playing.
+
+| Key | |
+|---|---|
+| `→` / `←` | next / previous step (going back rebuilds the tree up to that step) |
+| `Space` | play or pause |
+| `Home` / `End` | the start / the end |
+| `+` / `-` | double / halve the speed |
+| `g` | skip waits on or off |
+| `r` | restart and play |
+
+The bar under the counters has the same controls and a slider over all steps.
+
+**Replay files.** *Save replay file* downloads the session as one JSON file (its records and
+metadata: paths and line numbers, no file content). *Open replay file* plays such a file in any
+dashboard, on any machine, without storing it; if the project folder is not there, the tree shows the
+files the session touched. To keep a file as a session on a machine, so it is listed and replayable
+by id, import it:
+
+```sh
+python3 scripts/serve.py export <session_id> session.json
+python3 scripts/serve.py import session.json          # --force replaces an existing session
+```
+
+### Expectation sets
+
+A list of the files a task should read and the files it should change. With a set chosen (the
+selector in the Tree view's tool bar, or `?expect=<name>`), every listed file carries a ring until
+the session has read or written it, and two counters show `expected reads 9 / 11` and
+`expected writes 4 / 6`; hovering them lists what is still missing. Rings left at the end are the
+misses: a file the agent needed and never opened, or a dependent it never updated.
+
+*Edit expectations* makes a click on a tile add or remove it (as a read or a write), or edit the set
+as text; *Save* stores it. Sets are plain text files kept on this machine, outside every project, so an
+agent at work never sees them: `${RWM_DATA_DIR}/expectations/<name>.txt`.
+
+```
+# expectation set: new-guide
+# optional note
+root: /abs/path/to/project
+read CLAUDE.md
+read needs/standing-monitors.md
+read methods/*.md          # a glob is satisfied by any one matching file, and rings no tile
+write guides/*monitor*.md
+write index.md
+```
+
+Paths are relative to `root`; a set without `root` is offered for every project.
 
 ### Projector mode
 
@@ -222,6 +279,8 @@ Standard library only.
 python3 scripts/serve.py status   # is it up
 python3 scripts/serve.py run      # foreground
 python3 scripts/serve.py stop
+python3 scripts/serve.py export <session_id> [file.json]
+python3 scripts/serve.py import <file.json> [--force]
 ```
 
 It starts itself on `SessionStart` and exits on its own after `RWM_IDLE_MINUTES` with no requests
