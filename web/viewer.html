@@ -273,7 +273,7 @@ body.projector .tv {
 .tv-map .gt { display: flex; flex-wrap: wrap; gap: var(--gap); align-content: flex-start; }
 .tv-map .t { --a: 1; width: var(--t); height: var(--t); border-radius: max(2px, calc(var(--t) * .18)); position: relative;
   background: var(--tile); transition: background-color .25s;
-  box-shadow: var(--sh-s, 0 0 #0000), var(--sh-p, 0 0 #0000); }
+  box-shadow: var(--sh-s, 0 0 #0000), var(--sh-p, 0 0 #0000), var(--sh-x, 0 0 #0000); cursor: pointer; }
 .tv-map .t.r { background: color-mix(in oklab, var(--read) calc(var(--a) * 100%), var(--tile)); }
 .tv-map .t.w { background: var(--write); }
 .tv-map .t.r.w { background: linear-gradient(135deg, color-mix(in oklab, var(--read) calc(var(--a) * 100%), var(--tile)) 0 50%, var(--write) 50% 100%); }
@@ -308,6 +308,57 @@ body.projector .tv {
 .tv-foot .label { margin-left: auto; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; min-width: 0; max-width: 40%; }
 .tv-progress { position: fixed; left: 0; top: 0; height: 4px; background: var(--write); width: 0; z-index: 10; }
 .tv-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-muted); font-size: var(--tv-group); }
+/* Tools, replay controls, the outline layout, expectation rings and the file panel. */
+.tv-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.tv-tools > span { display: inline-flex; gap: 8px; align-items: center; }
+.tv-tools .grow { flex: 1; }
+.btn { font: inherit; font-size: .82rem; color: var(--text-secondary); background: var(--surface-1); border: 1px solid var(--rule);
+  border-radius: 7px; padding: 5px 9px; cursor: pointer; text-decoration: none; white-space: nowrap; }
+.tv-tools input[type=text], #tvEditName { font: inherit; font-size: .82rem; color: var(--text-primary); background: var(--surface-1);
+  border: 1px solid var(--rule); border-radius: 7px; padding: 5px 8px; }
+#tvEditArea { width: 100%; font: 12px/1.5 var(--font-mono); color: var(--text-primary); background: var(--surface-1);
+  border: 1px solid var(--rule); border-radius: 8px; padding: 8px 10px; resize: vertical; }
+.tv-replay { display: flex; gap: 8px; align-items: center; font-size: .82rem; color: var(--text-secondary); }
+.tv-replay input[type=range] { flex: 1; min-width: 120px; accent-color: var(--write); }
+.tv-replay .rp-pos { white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 17ch; }
+.tv-replay .rp-gaps { display: inline-flex; gap: 5px; align-items: center; white-space: nowrap; }
+body.projector .tv-tools, body.bare .tv-tools, body.bare #tvEditArea, body.bare .tv-replay { display: none !important; }
+body.projector .tv-replay { font-size: 18px; }
+body.projector .tv-replay button, body.projector .tv-replay select { font-size: 18px; padding: 4px 12px; }
+#tip { white-space: pre-line; max-width: 46ch; }
+body.projector #tip { font-size: 20px; max-width: 60ch; }
+.tv-map .t:hover { filter: brightness(1.3); }
+.tv-map .t.xr { --sh-x: 0 0 0 max(2px, calc(var(--t) * .1)) var(--mark); }
+.tv-map .t.xw { --sh-x: 0 0 0 max(2px, calc(var(--t) * .1)) var(--write); }
+.tv-map .t.sel:not(.cur) { z-index: 2; outline: max(2px, calc(var(--t) * .1)) dashed var(--text-primary); outline-offset: max(1px, calc(var(--t) * .08)); }
+.tv-map.outline { display: flex; flex-direction: column; gap: var(--orow-gap); overflow-x: hidden; }
+.tv-map.outline .orow { display: flex; align-items: flex-start; flex: 0 0 auto; border-radius: 0 6px 6px 0;
+  background: color-mix(in oklab, var(--read) calc(var(--gr, 0) * 12%), transparent); }
+.tv-map.outline .orow.gw { box-shadow: inset 3px 0 0 var(--write); }
+.tv-map.outline .olabel { flex: 0 0 var(--olw); display: flex; align-items: baseline; gap: .5em; height: var(--olh);
+  line-height: var(--olh); font-size: var(--ol); padding-left: calc(var(--depth) * var(--oind) + .4em); white-space: nowrap; overflow: hidden; }
+.tv-map.outline .olabel b { font-weight: 640; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tv-map.outline .olabel .gc { margin-left: auto; padding-right: .7em; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.tv-map.outline .ohead .olabel b { color: var(--text-secondary); font-weight: 560; }
+.tv-map.outline .gt { flex: 1; min-width: 0; margin-top: max(0px, calc((var(--olh) - var(--t)) / 2)); }
+.tv-panel { position: fixed; top: 0; right: 0; bottom: 0; width: min(560px, 42vw); z-index: 30; overflow-y: auto;
+  background: var(--surface-1); border-left: 1px solid var(--rule); box-shadow: -18px 0 40px rgba(0,0,0,.25);
+  padding: 22px 24px 40px; font-size: 14px; color: var(--text-secondary); }
+body.projector .tv-panel { font-size: 20px; width: min(780px, 44vw); }
+.tv-panel .x { position: absolute; top: 12px; right: 14px; font-size: 1.2em; line-height: 1; padding: 3px 11px; }
+.tv-panel h3 { margin: 0 2.4em 6px 0; font-size: 1.25em; color: var(--text-primary); word-break: break-all; }
+.tv-panel h3 .dim { color: var(--text-muted); font-weight: 500; }
+.tv-panel h4 { margin: 18px 0 6px; font-size: .78em; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); }
+.tv-panel table { font-size: 1em; }
+.tv-panel td { padding: 4px 12px 4px 0; font-size: 1em; }
+.tv-panel td.via { color: var(--text-muted); white-space: nowrap; }
+.tv-panel .tvp-sum, .tv-panel .tvp-exp { margin: 0 0 8px; }
+.tv-panel .tvp-exp { color: var(--text-primary); }
+.tvp-bar { position: relative; height: 16px; background: var(--track); border-radius: 4px; overflow: hidden; margin-top: 12px; }
+.tvp-bar i { position: absolute; top: 0; height: 55%; background: var(--read); }
+.tvp-bar i.w { top: 55%; height: 45%; background: var(--write); }
+.tvp-axis { display: flex; justify-content: space-between; font-size: .8em; color: var(--text-muted); margin-top: 3px; }
+.tvp-actions { margin-top: 18px; }
 </style>
 </head>
 <body>
@@ -337,6 +388,46 @@ body.projector .tv {
       <span class="tv-badge" hidden></span>
     </div>
     <div class="tv-counters" id="tvCounters"></div>
+    <div class="tv-tools" id="tvTools">
+      <span class="tabs" role="group" aria-label="Layout">
+        <button data-layout="map" aria-pressed="true" title="Folders as blocks (L)">Map</button
+        ><button data-layout="outline" aria-pressed="false" title="Folders one under another (L)">Outline</button>
+      </span>
+      <span id="tvExpectTools">
+        <select id="tvExpect" aria-label="Expectation set"><option value="">no expectation set</option></select>
+        <button id="tvExpectEdit" title="Mark the files this task should read and write">Edit expectations</button>
+      </span>
+      <span id="tvEditBar" hidden>
+        <input id="tvEditName" placeholder="name-of-the-set" aria-label="Expectation set name" size="22">
+        <span class="tabs" role="group" aria-label="What a click marks">
+          <button data-emode="read" aria-pressed="true">Click marks read</button
+          ><button data-emode="write" aria-pressed="false">Click marks write</button>
+        </span>
+        <button id="tvEditText" title="Edit as text; globs such as guides/*.md are allowed">Text</button>
+        <button id="tvEditSave">Save</button>
+        <button id="tvEditCancel">Cancel</button>
+        <span class="sub" id="tvEditCount"></span>
+      </span>
+      <span class="grow"></span>
+      <button id="tvReplayBtn" title="Play this session back, or step through it">Replay</button>
+      <a id="tvExport" class="btn" hidden>Save replay file</a>
+      <label class="btn" title="Replay a session saved on any machine">Open replay file<input type="file" id="tvImport" accept=".json,application/json" hidden></label>
+    </div>
+    <textarea id="tvEditArea" hidden spellcheck="false" rows="7" aria-label="Expectation set as text"></textarea>
+    <div class="tv-replay" id="tvReplay" hidden>
+      <button data-r="start" title="Back to the start (Home)">⏮</button>
+      <button data-r="prev" title="Previous step (←)">◀ step</button>
+      <button data-r="play" title="Play or pause (space)">▶ play</button>
+      <button data-r="next" title="Next step (→)">step ▶</button>
+      <button data-r="end" title="Jump to the end (End)">⏭</button>
+      <select data-r="speed" aria-label="Speed">
+        <option value="0.5">×0.5</option><option value="1">×1</option><option value="2">×2</option>
+        <option value="4">×4</option><option value="8">×8</option><option value="16">×16</option>
+      </select>
+      <label class="rp-gaps" title="Cap every wait at one second (G)"><input type="checkbox" data-r="gaps"> skip waits</label>
+      <input type="range" data-r="scrub" min="0" max="0" value="0" aria-label="Step">
+      <span class="rp-pos num"></span>
+    </div>
     <div class="tv-map" id="tvMap"></div>
     <div class="tv-foot" id="tvFoot">
       <span class="lg"><i class="sw" style="background:var(--read)"></i>read</span>
@@ -344,10 +435,15 @@ body.projector .tv {
       <span class="lg"><i class="sw" style="box-shadow: inset 0 0 0 2px var(--read)"></i>searched</span>
       <span class="lg"><i class="sw" style="background: linear-gradient(225deg, var(--mark) 0 30%, var(--tile) 30%)"></i>instructions</span>
       <span class="lg"><i class="sw" style="background: repeating-linear-gradient(45deg, var(--read) 0 3px, var(--tile) 3px 6px)"></i>subagent</span>
+      <span class="lg" id="tvLegendExpect" hidden><i class="sw" style="box-shadow: 0 0 0 2px var(--mark)"></i>expected, not yet</span>
       <span class="note-shell" id="tvNote">Shell reads and writes are inferred from commands. @file references, MCP and web results are not seen.</span>
       <span class="label" id="tvLabel"></span>
     </div>
   </div>
+  <aside class="tv-panel" id="tvPanel" hidden aria-label="File details">
+    <button class="x" data-close title="Close (Esc)">×</button>
+    <div id="tvPanelBody"></div>
+  </aside>
   <div class="tv-progress" id="tvProgress" hidden></div>
 </div>
 
@@ -640,7 +736,7 @@ function renderFiles(m) {
     if (f.readCount && !f.writeCount && !f.instr && pctRead > 60)
       flags.push(`<span class="flag">read ${pctRead}%, never edited — candidate to trim</span>`);
     if (f.stale) flags.push(`<span class="flag">rewritten — earlier positions dropped</span>`);
-    return `<div class="file">
+    return `<div class="file" data-path="${esc(f.path)}">
       <div class="hd"><span class="path mono">${esc(relPath(f.path))}</span>
         <span class="stats num">${fmt(f.total)} lines · ${pctRead}% read · ${f.readCount}r/${f.writeCount}w
           · ~${fmt(tokens(f.readChars))} tok</span></div>
@@ -703,48 +799,63 @@ function renderTimeline(m) {
 const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 /* ---------------------------------------------------------------- tree view */
-// The whole project as a fixed map: folders are labelled groups, files are tiles.
-// Events change tile states in place; nothing is appended, so nothing scrolls away.
+// The whole project as one fixed picture of folders and file tiles, in one of two layouts: a
+// map of folder blocks, or an outline with folders one under another. Events change tile states
+// in place; nothing is appended, so nothing scrolls away.
 
 const TV = {
-  root: null, real: null, listing: null, groups: [], files: new Map(), outside: new Map(),
-  layoutKey: "", cur: null, curOp: null, pendingById: new Map(), lastInstr: {},
+  root: null, real: null, listing: null, rels: [], groups: [], files: new Map(), outside: new Map(),
+  layout: "map", layoutKey: "", cur: null, curOp: null, pendingById: new Map(), lastInstr: {},
   startTs: null, promptTs: null, endTs: null, lastTs: null, firstEditTs: null, readBeforeEdit: 0,
   counts: null, animate: false, instrRes: [], replayClock: null, idleAfter: 2500,
+  panel: null, expect: null, expectSets: [], editing: null,
 };
 window.rwmLatency = [];   // tool call → highlight samples; see scripts/latency.py
 
+const dirOf = (rel) => { const i = rel.lastIndexOf("/"); return i < 0 ? "" : rel.slice(0, i); };
+const clock = (ms) => ms == null || ms < 0 ? "—" : `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`;
+
 function tvReset() {
-  for (const st of TV.files.values()) {
-    if (st.created) { st.el?.remove(); TV.files.delete(st.rel); continue; }
+  let removed = false;
+  for (const st of [...TV.files.values()]) {
+    if (st.created) { TV.files.delete(st.rel); removed = true; continue; }
     Object.assign(st, tvBlank(st.rel, st.group, st.el));
     st.instr = isInstr(st.rel);   // a property of the file, not of the session
-    tvPaint(st);
   }
+  if (removed) TV.rels = TV.rels.filter(r => TV.files.has(r));
   TV.outside = new Map(); TV.pendingById = new Map(); TV.lastInstr = {};
   TV.cur = null; TV.curOp = null;
   TV.startTs = TV.promptTs = TV.endTs = TV.lastTs = TV.firstEditTs = null;
   TV.readBeforeEdit = 0;
-  TV.counts = { read: new Set(), written: new Set(), created: new Set(), subRead: new Set(), searches: 0,
-                linesRead: 0, linesWritten: 0, readChars: 0, instrChars: 0, outsideRead: new Set() };
-  for (const g of TV.groups) { g.recent = []; g.el && tvPaintGroup(g); }
+  TV.counts = { read: new Set(), written: new Set(), writtenAll: new Set(), created: new Set(), subRead: new Set(),
+                searches: 0, linesRead: 0, linesWritten: 0, readChars: 0, instrChars: 0, outsideRead: new Set() };
+  if (TV.panel && !TV.files.has(TV.panel.rel)) TV.panel = null;
+  tvExpectMark();
+  if (removed && TV.listing) tvRender();
+  else {
+    for (const st of TV.files.values()) tvPaint(st);
+    for (const g of TV.groups) { g.recent = []; g.el && tvPaintGroup(g); }
+  }
   tvTicker("idle", "", state.sid || !state.followRoot ? "" : `start the agent in ${state.followRoot.split("/").pop()}`, "");
   tvCallout();
+  tvPanelRender();
 }
 
 const tvBlank = (rel, group, el) => ({
-  rel, group, el, reads: 0, writes: 0, ranges: [], covered: 0, total: 0, searched: false,
-  instr: false, created: false, main: false, sub: false, pend: new Map(), ghost: false,
+  rel, group, el, reads: 0, writes: 0, ranges: [], subRanges: [], wranges: [], covered: 0, total: 0,
+  searched: false, instr: false, created: false, main: false, sub: false, pend: new Map(), ghost: false,
+  log: [], expRead: false, expWrite: false,
 });
 
-function globRe(g) {
-  const re = g.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*/g, " ")
-              .replace(/\*/g, "[^/]*").replace(/\?/g, "[^/]").replace(/ /g, ".*");
-  return new RegExp(`(^|/)${re}$`);
-}
+// Glob to regular expression. "§§" stands in for ** while single stars are expanded.
+const globBody = (g) => g.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*/g, "§§")
+  .replace(/\*/g, "[^/]*").replace(/\?/g, "[^/]").replace(/§§/g, ".*");
+const globRe = (g) => new RegExp(`(^|/)${globBody(g)}$`);
+// Expectation patterns are relative to the project root and match the whole path.
+const globAbs = (g) => new RegExp(`^${globBody(g)}$`);
 const isInstr = (p) => TV.instrRes.some(r => r.test(p));
 
-// Folders become groups. A folder too large to scan as one block is split into its
+// Map: folders become groups. A folder too large to scan as one block is split into its
 // subfolders, a few levels deep; the threshold rises until the group count stays readable.
 function tvGroups(files) {
   const root = { path: "", files: [], dirs: new Map(), count: 0 };
@@ -776,7 +887,33 @@ function tvGroups(files) {
   return groups.filter(g => g.files.length || g.dir === "");
 }
 
+// Outline: every folder on its own row, one under another and indented by depth. Its files are
+// one run of tiles that wraps only at the edge of the screen.
+function tvRows(rels) {
+  const byDir = new Map();
+  for (const rel of rels) {
+    const d = dirOf(rel);
+    if (!byDir.has(d)) byDir.set(d, []);
+    byDir.get(d).push(rel);
+  }
+  const dirs = new Set([""]);
+  for (const d of byDir.keys()) {
+    const parts = d ? d.split("/") : [];
+    for (let k = 1; k <= parts.length; k++) dirs.add(parts.slice(0, k).join("/"));
+  }
+  const cmp = (a, b) => {
+    const A = a ? a.split("/") : [], B = b ? b.split("/") : [];
+    for (let i = 0; i < Math.min(A.length, B.length); i++) if (A[i] !== B[i]) return A[i] < B[i] ? -1 : 1;
+    return A.length - B.length;
+  };
+  return [...dirs].sort(cmp).map(d => ({
+    dir: d, depth: d ? d.split("/").length : 0, files: (byDir.get(d) || []).slice().sort(),
+    subtree: d ? rels.filter(r => r.startsWith(d + "/")) : rels.slice(),
+  }));
+}
+
 function tvGroupFor(rel) {
+  if (TV.layout === "outline") return TV.groups.find(g => g.dir === dirOf(rel)) || null;
   let best = TV.groups.find(g => g.dir === "");
   for (const g of TV.groups) {
     if (g.dir && rel.startsWith(g.dir + "/") && (!best || g.dir.length > best.dir.length)) best = g;
@@ -795,7 +932,8 @@ function tvSizes() {
 function tvFit(W, H) {
   const S = tvSizes();
   const heights = (colW, t) => {
-    const perRow = Math.max(1, Math.floor((colW - 2 * S.pad + S.gap) / (t + S.gap)));
+    // Content width inside the group: its padding and its 1px border on both sides.
+    const perRow = Math.max(1, Math.floor((colW - 2 * S.pad - 2 + S.gap) / (t + S.gap)));
     return TV.groups.map(g => S.lh + S.nh + 2 * S.pad + 2 +
       Math.max(1, Math.ceil(g.files.length / perRow)) * (t + S.gap) - S.gap);
   };
@@ -841,9 +979,16 @@ function tvLayout() {
   if (!TV.listing || state.tab !== "tree") return;
   const W = map.clientWidth, H = map.clientHeight;
   if (W < 50 || H < 50) return;
-  const key = `${W}x${H}:${TV.groups.map(g => g.files.length).join(",")}:${document.body.classList.contains("projector")}`;
+  const P = document.body.classList.contains("projector");
+  const key = `${TV.layout}:${W}x${H}:${TV.groups.map(g => g.files.length).join(",")}:${P}`;
   if (key === TV.layoutKey) return;
   TV.layoutKey = key;
+  if (TV.layout === "outline") tvLayoutOutline(map, W, H, P);
+  else tvLayoutMap(map, W, H);
+  tvCallout();
+}
+
+function tvLayoutMap(map, W, H) {
   const L = tvFit(W, H);
   const S = L.S;
   map.style.setProperty("--t", L.t + "px");
@@ -861,43 +1006,109 @@ function tvLayout() {
       y += L.heights[gi] + S.gapY;
     }
   });
+}
+
+// Outline sizing: the largest label size whose rows still fit with tiles big enough to see;
+// below that, the page scrolls rather than shrinking labels past reading.
+function tvLayoutOutline(map, W, H, P) {
+  const sizes = P ? [24, 22, 20, 18, 16] : [13, 12, 11];
+  const gap = P ? 4 : 3, rowGap = P ? 4 : 2, tMin = 4, tFloor = P ? 14 : 8;
+  const ctx = (tvLayoutOutline.ctx ||= document.createElement("canvas").getContext("2d"));
+  const family = getComputedStyle(map).fontFamily || "system-ui";
+  let pick = null;
+  for (const L of sizes) {
+    ctx.font = `640 ${L}px ${family}`;
+    const lh = Math.round(L * 1.3), indent = Math.round(L * 1.1);
+    const countW = ctx.measureText("000 000 / 0000").width;
+    const labelW = Math.max(...TV.groups.map(g => g.depth * indent + ctx.measureText(g.label).width));
+    const lw = Math.min(Math.round(W * 0.34), Math.ceil(labelW + countW + L * 1.6));
+    const tilesW = W - lw;
+    const height = (t) => TV.groups.reduce((h, g) => {
+      const per = Math.max(1, Math.floor((tilesW + gap) / (t + gap)));
+      const rows = Math.ceil(g.files.length / per);
+      const tiles = rows ? Math.max(0, (lh - t) / 2) + rows * (t + gap) - gap : 0;
+      return h + Math.max(lh, tiles) + rowGap;
+    }, 0);
+    let lo = tMin, hi = lh + 8, fit = 0;
+    while (lo <= hi) {
+      const t = (lo + hi) >> 1;
+      if (height(t) <= H - 2) { fit = t; lo = t + 1; } else hi = t - 1;
+    }
+    if (fit >= tFloor || L === sizes[sizes.length - 1]) {
+      pick = { L, lh, lw, indent, t: Math.max(fit, tFloor), overflow: fit < tFloor };
+      break;
+    }
+  }
+  const vars = { "--ol": pick.L, "--olh": pick.lh, "--olw": pick.lw, "--oind": pick.indent,
+                 "--t": pick.t, "--gap": gap, "--orow-gap": rowGap };
+  for (const [k, v] of Object.entries(vars)) map.style.setProperty(k, v + "px");
+  map.style.overflowY = pick.overflow ? "auto" : "";
+}
+
+// Draw the current layout from the file states, which survive a layout switch.
+function tvRender() {
+  const map = $("#tvMap");
+  const name = (TV.root || "").split("/").pop() || TV.root || "";
+  const outline = TV.layout === "outline";
+  TV.layoutKey = "";
+  map.classList.toggle("outline", outline);
+  map.style.overflowY = "";
+  TV.groups = outline ? tvRows(TV.rels) : tvGroups(TV.rels);
+  for (const g of TV.groups) g.label = (g.dir ? (outline ? g.dir.split("/").pop() : g.dir) : name) + "/";
+  const tiles = (g) => g.files.map(f => `<i class="t" data-rel="${esc(f)}"></i>`).join("");
+  map.innerHTML = TV.groups.map((g, i) => outline
+    ? `<div class="orow${g.files.length ? "" : " ohead"}" data-g="${i}" style="--depth:${g.depth}">
+         <div class="olabel"><b>${esc(g.label)}</b><span class="gc"></span></div>
+         <div class="gt">${tiles(g)}</div></div>`
+    : `<section class="g" data-g="${i}">
+         <header><b>${esc(g.label)}</b><span class="gc"></span></header>
+         <div class="gn"></div>
+         <div class="gt">${tiles(g)}</div></section>`
+  ).join("") + `<div class="tv-callout" id="tvCallout" hidden></div>`;
+  const els = map.querySelectorAll("[data-g]");
+  TV.groups.forEach((g, i) => {
+    g.el = els[i];
+    g.recent = [];
+    g.el.querySelectorAll(".t").forEach((el, j) => {
+      const st = TV.files.get(g.files[j]);
+      st.el = el; st.group = g;
+    });
+  });
+  if (!TV.rels.length) map.insertAdjacentHTML("beforeend",
+    `<div class="tv-empty">${TV.listing?.source === "missing" ? "This folder no longer exists" : "No files listed"}</div>`);
+  for (const st of TV.files.values()) tvPaint(st);
+  for (const g of TV.groups) tvPaintGroup(g);
+  tvLayout();
+}
+
+function tvSetLayout(layout) {
+  TV.layout = layout === "outline" ? "outline" : "map";
+  localStorage.setItem("rwm-layout", TV.layout);
+  for (const b of document.querySelectorAll("[data-layout]")) b.setAttribute("aria-pressed", String(b.dataset.layout === TV.layout));
+  const q = new URLSearchParams(location.search);
+  q.set("layout", TV.layout);
+  history.replaceState({}, "", location.pathname + "?" + q.toString());
+  if (TV.listing) tvRender();
   tvCallout();
 }
 
-function tvBuild(listing) {
+function tvBuild(listing, events = state.events) {
   TV.listing = listing;
   TV.root = listing.root; TV.real = listing.real;
-  TV.layoutKey = "";
   // Files this session created are held back so they can arrive with the session.
   const created = new Set();
-  for (const e of state.events) if (e.kind === "write" && e.mode === "create") { const r = tvRel(e.path); if (r) created.add(r); }
-  const files = listing.files.filter(f => !created.has(f));
-  TV.groups = tvGroups(files);
-  TV.files = new Map();
-  const name = (TV.root || "").split("/").pop() || TV.root;
-  $("#tvMap").innerHTML = TV.groups.map((g, i) => `<section class="g" data-g="${i}">
-      <header><b>${esc(g.dir ? g.dir + "/" : name + "/")}</b><span class="gc"></span></header>
-      <div class="gn"></div>
-      <div class="gt">${g.files.map(f => `<i class="t" data-tip="${esc(f)}"></i>`).join("")}</div>
-    </section>`).join("") + `<div class="tv-callout" id="tvCallout" hidden></div>` +
-    (listing.truncated ? `` : ``);
-  TV.groups.forEach((g, i) => {
-    g.el = $("#tvMap").querySelector(`[data-g="${i}"]`);
-    g.recent = [];
-    const tiles = g.el.querySelectorAll(".t");
-    g.files.forEach((rel, j) => {
-      const st = tvBlank(rel, g, tiles[j]);
-      st.instr = isInstr(rel);
-      TV.files.set(rel, st);
-      tvPaint(st);
-    });
-  });
-  if (!listing.files.length) $("#tvMap").insertAdjacentHTML("beforeend",
-    `<div class="tv-empty">${listing.source === "missing" ? "This folder no longer exists" : "No files listed"}</div>`);
+  for (const e of events) if (e.kind === "write" && e.mode === "create") { const r = tvRel(e.path); if (r) created.add(r); }
+  TV.rels = listing.files.filter(f => !created.has(f)).sort();
+  TV.files = new Map(TV.rels.map(rel => {
+    const st = tvBlank(rel, null, null);
+    st.instr = isInstr(rel);
+    return [rel, st];
+  }));
   if (listing.truncated) $("#tvNote").textContent = `Showing ${fmt(listing.files.length)} of ${fmt(listing.total)} files (RWM_TREE_MAX). ` + $("#tvNote").textContent;
+  tvRender();
   tvReset();
-  tvLayout();
   tvReplayAll();
+  tvExpectLoad();
 }
 
 function tvRel(abs) {
@@ -914,21 +1125,30 @@ function tvFile(abs, { create = false, ghost = false } = {}) {
     return TV.outside.get(abs);
   }
   let st = TV.files.get(rel);
-  if (st || !create || !TV.groups.length) return st || null;
-  // A file that did not exist when the map was drawn: insert its tile in path order.
-  const g = tvGroupFor(rel);
-  const idx = g.files.findIndex(f => f > rel);
-  const el = document.createElement("i");
-  el.className = "t"; el.dataset.tip = rel;
-  const tiles = g.el.querySelector(".gt");
-  if (idx < 0) { g.files.push(rel); tiles.appendChild(el); }
-  else { g.files.splice(idx, 0, rel); tiles.insertBefore(el, tiles.children[idx]); }
-  st = tvBlank(rel, g, el);
+  if (st || !create || !TV.listing) return st || null;
+  // A file that did not exist when the tree was drawn: its tile goes in by path order.
+  st = tvBlank(rel, null, null);
   st.instr = isInstr(rel);
   st.created = true; st.ghost = ghost;
   TV.files.set(rel, st);
-  if (TV.animate) { el.classList.add("new"); setTimeout(() => el.classList.remove("new"), 1000); }
-  tvLayout();
+  TV.rels.push(rel);
+  TV.rels.sort();
+  tvExpectMarkOne(st);
+  const g = tvGroupFor(rel);
+  if (g && g.el) {
+    const idx = g.files.findIndex(f => f > rel);
+    const el = document.createElement("i");
+    el.className = "t"; el.dataset.rel = rel;
+    const box = g.el.querySelector(".gt");
+    if (idx < 0) { g.files.push(rel); box.appendChild(el); }
+    else { g.files.splice(idx, 0, rel); box.insertBefore(el, box.children[idx]); }
+    for (const a of TV.groups) if (a.subtree && (a.dir === "" || rel.startsWith(a.dir + "/"))) a.subtree.push(rel);
+    st.el = el; st.group = g;
+    tvLayout();
+  } else {
+    tvRender();   // a folder the tree did not have yet
+  }
+  if (TV.animate && st.el) { st.el.classList.add("new"); setTimeout(() => st.el?.classList.remove("new"), 1000); }
   return st;
 }
 
@@ -942,17 +1162,44 @@ function tvPaint(st) {
   if (st.instr) c += " i";
   if (st.ghost && !st.writes) c += " ghost";
   if (st.sub && !st.main) c += " sub";
+  // An expected file keeps its ring until the session has done what was expected of it.
+  if (TV.editing) { if (st.expRead) c += " xr"; else if (st.expWrite) c += " xw"; }
+  else if (st.expRead && !st.reads) c += " xr";
+  else if (st.expWrite && !st.writes) c += " xw";
   if (pendOps.includes("write")) c += " pw"; else if (pendOps.length) c += " pr";
+  if (TV.panel === st) c += " sel";
   if (TV.cur === st) c += " cur";
   if (st.el.classList.contains("new")) c += " new";
   st.el.className = c;
   if (st.reads) st.el.style.setProperty("--a", (0.5 + 0.5 * Math.min(1, st.total ? st.covered / st.total : 1)).toFixed(2));
-  const bits = [st.rel];
-  if (st.reads) bits.push(`read ${st.reads}× · ${fmt(st.covered)}/${fmt(st.total || 0)} lines`);
-  if (st.writes) bits.push(`written ${st.writes}×${st.created ? " · created" : ""}`);
-  if (st.searched) bits.push("matched a search");
-  if (st.instr) bits.push("instructions");
-  st.el.dataset.tip = bits.join(" · ");
+}
+
+function mergeRanges(list) {
+  const out = [];
+  for (const [a, b] of list.slice().sort((x, y) => x[0] - y[0])) {
+    const last = out[out.length - 1];
+    if (last && a <= last[1] + 1) last[1] = Math.max(last[1], b);
+    else out.push([a, b]);
+  }
+  return out;
+}
+const spanText = (list, max = 4) => list.slice(0, max).map(([a, b]) => a === b ? fmt(a) : `${fmt(a)}–${fmt(b)}`).join(", ")
+  + (list.length > max ? ` and ${list.length - max} more` : "");
+
+// Hover text for a tile: which file, and the lines this session read and wrote in it.
+function tvTipText(st) {
+  const out = [st.rel];
+  const read = mergeRanges([...st.ranges, ...st.subRanges]);
+  if (st.reads) out.push(`read ${st.reads}× · lines ${spanText(read)}${st.total ? ` of ${fmt(st.total)}` : ""}`);
+  if (st.writes) out.push(`written ${st.writes}× · ${st.wranges.length ? "lines " + spanText(mergeRanges(st.wranges)) : "by a shell command"}${st.created ? " · new file" : ""}`);
+  if (st.searched) out.push("matched a search");
+  if (st.instr) out.push("instruction file");
+  if (st.expRead || st.expWrite) out.push("expected: " + [
+    st.expRead && (st.reads ? "read ✓" : "read, not yet"),
+    st.expWrite && (st.writes ? "written ✓" : "write, not yet")].filter(Boolean).join(" · "));
+  if (!st.reads && !st.writes && !st.searched) out.push("untouched");
+  out.push(TV.editing ? `click to toggle as an expected ${TV.editing.mode}` : "click for every read and write");
+  return out.join("\n");
 }
 
 function tvTouchGroup(st, how) {
@@ -961,35 +1208,42 @@ function tvTouchGroup(st, how) {
   const name = st.rel.split("/").pop();
   g.recent = [{ name, how }, ...g.recent.filter(r => r.name !== name)].slice(0, 8);
   tvPaintGroup(g);
+  // Outline folders without files of their own count their subtree, so they change too.
+  if (TV.layout === "outline") for (const a of TV.groups) {
+    if (a !== g && !a.files.length && (a.dir === "" || st.rel.startsWith(a.dir + "/"))) tvPaintGroup(a);
+  }
 }
 
 function tvPaintGroup(g) {
   let r = 0, w = 0;
-  for (const rel of g.files) { const st = TV.files.get(rel); if (st?.reads) r++; if (st?.writes) w++; }
-  g.el.style.setProperty("--gr", g.files.length ? Math.min(1, r / g.files.length * 1.5).toFixed(3) : 0);
+  const list = g.files.length || !g.subtree ? g.files : g.subtree;
+  for (const rel of list) { const st = TV.files.get(rel); if (st?.reads) r++; if (st?.writes) w++; }
+  g.el.style.setProperty("--gr", list.length ? Math.min(1, r / list.length * 1.5).toFixed(3) : 0);
   g.el.classList.toggle("gw", w > 0);
   g.el.querySelector(".gc").innerHTML =
-    `${r ? `<span class="r">${r}</span> ` : ""}${w ? `<span class="w">${w}</span> ` : ""}${r || w ? "/ " : ""}${fmt(g.files.length)}`;
-  g.el.querySelector(".gn").innerHTML = g.recent.map(x => `<span class="${x.how}">${esc(x.name)}</span>`).join("");
+    `${r ? `<span class="r">${r}</span> ` : ""}${w ? `<span class="w">${w}</span> ` : ""}${r || w ? "/ " : ""}${fmt(list.length)}`;
+  const gn = g.el.querySelector(".gn");
+  if (gn) gn.innerHTML = g.recent.map(x => `<span class="${x.how}">${esc(x.name)}</span>`).join("");
 }
 
 // Distinct lines read: keep disjoint ranges per file.
-function addRange(st, s, e) {
+function addRange(st, s, e, key = "ranges") {
   if (!(e >= s)) return 0;
   let added = e - s + 1, lo = s, hi = e;
   const out = [];
-  for (const [a, b] of st.ranges) {
+  for (const [a, b] of st[key]) {
     if (b < s - 1 || a > e + 1) { out.push([a, b]); continue; }
     added -= Math.max(0, Math.min(b, e) - Math.max(a, s) + 1);
     lo = Math.min(lo, a); hi = Math.max(hi, b);
   }
   out.push([lo, hi]);
-  st.ranges = out.sort((x, y) => x[0] - y[0]);
-  st.covered += added;
+  st[key] = out.sort((x, y) => x[0] - y[0]);
+  if (key === "ranges") st.covered += added;
   return added;
 }
 
 const now = () => TV.replayClock ? TV.replayClock() : Date.now();
+const tvLog = (st, e) => { if (st && st.log.length < 400) st.log.push(e); };
 
 function tvApply(e) {
   const C = TV.counts;
@@ -1018,7 +1272,7 @@ function tvApply(e) {
         st.pend.set(e.tool_use_id, e.op);
         if (!TV.pendingById.has(e.tool_use_id)) TV.pendingById.set(e.tool_use_id, []);
         TV.pendingById.get(e.tool_use_id).push(st);
-        tvCurrent(st, e.op, e.path, e.op === "write" ? "" : "", e);
+        tvCurrent(st, e.op, e.path, "", e);
         tvPaint(st);
         // A call that never reports back stops pulsing after a while.
         setTimeout(() => { if (st.pend.delete(e.tool_use_id)) tvPaint(st); }, 30000);
@@ -1033,7 +1287,9 @@ function tvApply(e) {
       C.searches++;
       if (e.mode !== "list") for (const p of e.files || []) {
         const st = tvFile(p);
-        if (st && !st.searched) { st.searched = true; tvPaint(st); }
+        if (!st) continue;
+        tvLog(st, e);
+        if (!st.searched) { st.searched = true; tvPaint(st); }
       }
       tvTicker(e.mode === "list" ? "list" : "search", e.pattern ? `“${e.pattern}”` : (e.scope ? tvShort(e.scope) : ""),
                `${fmt(e.n || 0)} file${e.n === 1 ? "" : "s"}${e.source === "bash" ? " · shell" : ""}`, "");
@@ -1049,11 +1305,18 @@ function tvApply(e) {
       clearPend();
       const st = tvFile(e.path);
       if (!st) return;
+      tvLog(st, e);
       if (e.kind === "instructions") st.instr = true;
       const s = e.kind === "read" ? e.start : 1, en = e.kind === "read" ? e.end : e.total_lines || 0;
       st.total = Math.max(st.total, e.total_lines || 0, en || 0);
       st.reads++;
-      if (sub) { st.sub = true; C.subRead.add(st.rel); tvPaint(st); tvCurrent(st, "read", e.path, tvRange(e), e); tvLit(e); return; }
+      if (sub) {
+        st.sub = true;
+        addRange(st, s, en, "subRanges");
+        C.subRead.add(st.rel);
+        tvPaint(st); tvCurrent(st, "read", e.path, tvRange(e), e); tvLit(e);
+        return;
+      }
       st.main = true;
       const firstRead = !C.read.has(st.rel);
       C.read.add(st.rel);
@@ -1072,11 +1335,14 @@ function tvApply(e) {
       clearPend();
       const st = tvFile(e.path, { create: true });
       if (!st) return;
+      tvLog(st, e);
       st.ghost = false;
       // A shell write cannot say whether the file existed; a tile inserted for it is new.
       if ((e.mode === "create" || st.created) && st.group) { st.created = true; C.created.add(st.rel); }
       st.writes++;
       st.total = Math.max(st.total, e.total_lines_after || 0);
+      for (const sp of e.spans || []) if (sp.new[1] >= sp.new[0]) st.wranges.push([sp.new[0], sp.new[1]]);
+      C.writtenAll.add(st.rel);
       if (sub) st.sub = true; else st.main = true;
       if (!sub) {
         C.written.add(st.rel);
@@ -1133,7 +1399,8 @@ function tvCallout() {
   if (!box) return;
   const st = TV.cur;
   if (!st || !st.el || state.tab !== "tree") { box.hidden = true; return; }
-  const map = $("#tvMap").getBoundingClientRect(), r = st.el.getBoundingClientRect();
+  const mapEl = $("#tvMap");
+  const map = mapEl.getBoundingClientRect(), r = st.el.getBoundingClientRect();
   const i = st.rel.lastIndexOf("/");
   box.innerHTML = i >= 0 ? `<span class="dim">${esc(st.rel.slice(0, i + 1))}</span>${esc(st.rel.slice(i + 1))}` : esc(st.rel);
   box.dataset.op = TV.curOp;
@@ -1141,8 +1408,8 @@ function tvCallout() {
   const bw = box.offsetWidth, bh = box.offsetHeight;
   let x = r.left - map.left + r.width / 2 - bw / 2;
   x = Math.max(0, Math.min(map.width - bw, x));
-  let y = r.top - map.top - bh - 10;
-  if (y < 0) y = r.bottom - map.top + 10;
+  let y = r.top - map.top + mapEl.scrollTop - bh - 10;
+  if (y < mapEl.scrollTop) y = r.bottom - map.top + mapEl.scrollTop + 10;
   box.style.left = x + "px"; box.style.top = y + "px";
 }
 
@@ -1160,6 +1427,197 @@ function tvLit(e) {
 }
 tvLit.seen = new Set();
 
+/* ---- expectation sets: the files a task should read and write, and whether it did */
+
+async function tvExpectLoad() {
+  if (!TV.root) return;
+  try {
+    const d = await (await fetch(`/api/expectations?root=${encodeURIComponent(TV.root)}`)).json();
+    TV.expectSets = d.sets || [];
+  } catch { TV.expectSets = []; }
+  const want = TV.editing ? "" : (TV.expect?.name || Q.get("expect") || "");
+  $("#tvExpect").innerHTML = `<option value="">no expectation set</option>` + TV.expectSets.map(s =>
+    `<option value="${esc(s.name)}"${s.name === want ? " selected" : ""}>${esc(s.name)} · ${s.reads.length} read · ${s.writes.length} write</option>`).join("");
+  if (want && !TV.editing) tvExpectUse(want, { keepUrl: true });
+}
+
+function tvExpectCompile(s) {
+  const item = (p) => ({ p, re: /[*?[]/.test(p) ? globAbs(p) : null });
+  return { ...s, r: s.reads.map(item), w: s.writes.map(item) };
+}
+
+function tvExpectUse(name, { keepUrl = false } = {}) {
+  const s = TV.expectSets.find(x => x.name === name);
+  TV.expect = s ? tvExpectCompile(s) : null;
+  $("#tvExpect").value = TV.expect ? name : "";
+  $("#tvLegendExpect").hidden = !TV.expect;
+  if (!keepUrl) {
+    const q = new URLSearchParams(location.search);
+    if (TV.expect) q.set("expect", name); else q.delete("expect");
+    history.replaceState({}, "", location.pathname + "?" + q.toString());
+  }
+  tvExpectMark();
+  for (const st of TV.files.values()) tvPaint(st);
+  tvCounters();
+  tvPanelRender();
+}
+
+function tvExpectMark() { for (const st of TV.files.values()) tvExpectMarkOne(st); }
+function tvExpectMarkOne(st) {
+  const x = TV.expect;
+  // Globs count toward the score but mark no tile: guides/*.md would ring every guide.
+  st.expRead = !!x && x.r.some(i => !i.re && i.p === st.rel);
+  st.expWrite = !!x && x.w.some(i => !i.re && i.p === st.rel);
+}
+
+function tvExpectScore() {
+  const x = TV.expect;
+  if (!x || !TV.counts) return null;
+  const read = new Set([...TV.counts.read, ...TV.counts.subRead]);
+  const judge = (items, done) => items.map(i => ({ ...i, ok: i.re ? [...done].some(r => i.re.test(r)) : done.has(i.p) }));
+  const r = judge(x.r, read), w = judge(x.w, TV.counts.writtenAll);
+  return { r, w, rOk: r.filter(i => i.ok).length, wOk: w.filter(i => i.ok).length };
+}
+
+function tvEditStart() {
+  const base = TV.expect || { name: "", root: TV.root, reads: [], writes: [], note: "" };
+  TV.editing = { mode: "read", prev: TV.expect };
+  TV.expect = tvExpectCompile({ ...base, reads: [...base.reads], writes: [...base.writes], root: base.root || TV.root });
+  $("#tvEditName").value = base.name || "";
+  $("#tvEditBar").hidden = false; $("#tvExpectTools").hidden = true;
+  $("#tvLegendExpect").hidden = false;
+  tvEditMode("read");
+  tvEditSync();
+  tvExpectMark();
+  for (const st of TV.files.values()) tvPaint(st);
+}
+
+function tvEditMode(m) {
+  TV.editing.mode = m;
+  for (const b of document.querySelectorAll("[data-emode]")) b.setAttribute("aria-pressed", String(b.dataset.emode === m));
+}
+
+function tvEditToggle(st) {
+  const x = TV.expect, key = TV.editing.mode === "write" ? "writes" : "reads";
+  const i = x[key].indexOf(st.rel);
+  if (i >= 0) x[key].splice(i, 1); else x[key].push(st.rel);
+  Object.assign(x, tvExpectCompile(x));
+  tvExpectMarkOne(st);
+  tvPaint(st);
+  tvEditSync();
+}
+
+function tvEditSync(fromText = false) {
+  const x = TV.expect;
+  if (fromText) {
+    const reads = [], writes = [];
+    for (const raw of $("#tvEditArea").value.split("\n")) {
+      const l = raw.trim();
+      if (!l || l.startsWith("#")) continue;
+      if (/^write\s/i.test(l)) writes.push(l.slice(6).trim()); else reads.push(l.replace(/^read\s+/i, "").trim());
+    }
+    x.reads = [...new Set(reads)]; x.writes = [...new Set(writes)];
+    Object.assign(x, tvExpectCompile(x));
+    tvExpectMark();
+    for (const st of TV.files.values()) tvPaint(st);
+  } else {
+    $("#tvEditArea").value = [...x.reads.map(p => "read " + p), ...x.writes.map(p => "write " + p)].join("\n");
+  }
+  $("#tvEditCount").textContent = `${x.reads.length} read · ${x.writes.length} write`;
+  tvCounters();
+}
+
+async function tvEditSave() {
+  const x = TV.expect, name = $("#tvEditName").value.trim();
+  try {
+    const r = await fetch("/api/expectations", {
+      method: "POST", headers: { "Content-Type": "application/json", "X-RWM": "1" },
+      body: JSON.stringify({ name, root: x.root || TV.root, note: x.note || "", reads: x.reads, writes: x.writes }),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    tvEditClose(null);
+    await tvExpectLoad();
+    tvExpectUse(name);
+  } catch (err) { $("#tvEditCount").textContent = String(err.message || err); }
+}
+
+function tvEditClose(restore) {
+  TV.editing = null;
+  TV.expect = restore;
+  $("#tvEditBar").hidden = true; $("#tvEditArea").hidden = true; $("#tvExpectTools").hidden = false;
+  $("#tvLegendExpect").hidden = !TV.expect;
+  tvExpectMark();
+  for (const st of TV.files.values()) tvPaint(st);
+  tvCounters();
+}
+
+/* ---- the file panel: every read and write of one file, with its lines */
+
+function tvPanelOpen(st) {
+  const prev = TV.panel;
+  TV.panel = st;
+  if (prev && prev !== st) tvPaint(prev);
+  tvPaint(st);
+  tvPanelRender();
+}
+
+function tvPanelClose() {
+  const prev = TV.panel;
+  TV.panel = null;
+  if (prev) tvPaint(prev);
+  tvPanelRender();
+}
+
+function tvPanelRender() {
+  const box = $("#tvPanel");
+  const st = TV.panel;
+  if (!st || state.tab !== "tree") { box.hidden = true; return; }
+  box.hidden = false;
+  const t0 = TV.promptTs ?? TV.startTs ?? st.log[0]?.ts;
+  const at = (e) => t0 == null || !e.ts ? "" : clock(e.ts - t0);
+  const via = (e) => [e.agent_type && `subagent ${e.agent_type}`,
+    e.source === "bash" ? `shell · ${e.cmd || e.tool || ""}`
+      : e.kind === "instructions" ? `loaded · ${e.load_reason || "session start"}`
+      : e.kind === "search" ? (e.tool || "search") : e.kind === "read" ? "Read" : e.kind === "edit" ? "Edit" : "Write",
+  ].filter(Boolean).join(" · ");
+  const reads = st.log.filter(e => e.kind === "read" || e.kind === "instructions");
+  const writes = st.log.filter(e => e.kind === "edit" || e.kind === "write");
+  const searches = st.log.filter(e => e.kind === "search");
+  const readSpans = mergeRanges([...st.ranges, ...st.subRanges]), writeSpans = mergeRanges(st.wranges);
+  const total = Math.max(st.total, 1, ...readSpans.map(r => r[1]), ...writeSpans.map(r => r[1]));
+  const bar = (list, cls) => list.map(([a, b]) =>
+    `<i class="${cls}" style="left:${(a - 1) / total * 100}%;width:${Math.max(0.6, (b - a + 1) / total * 100)}%"></i>`).join("");
+  const readText = (e) => e.kind === "instructions" ? `whole file · ${fmt(e.total_lines || 0)} lines`
+    : `lines ${fmt(e.start)}–${fmt(e.end)}${e.total_lines ? ` of ${fmt(e.total_lines)}` : ""}`;
+  const writeText = (e) => {
+    const where = (e.spans || []).length
+      ? e.spans.map(s => s.new[1] >= s.new[0] ? `lines ${fmt(s.new[0])}–${fmt(s.new[1])}` : `lines removed at ${fmt(s.new[0])}`).join(", ")
+      : `${e.mode || "write"}${e.lines_written ? ` · ${fmt(e.lines_written)} lines` : ""} · no line positions`;
+    const more = e.kind === "write" && e.mode === "create" ? " · created"
+      : e.kind === "edit" && e.delta ? ` · ${e.delta > 0 ? "+" : ""}${e.delta} lines` : "";
+    return where + more + (e.precision === "hunk" ? " · ±3 lines (hunk bounds)" : "");
+  };
+  const rows = (list, fn) => `<table>${list.map(e =>
+    `<tr><td class="num">${at(e)}</td><td>${esc(fn(e))}</td><td class="via">${esc(via(e))}</td></tr>`).join("")}</table>`;
+  const i = st.rel.lastIndexOf("/");
+  const sum = [st.reads ? `read ${st.reads}× · ${fmt(readSpans.reduce((a, [x, y]) => a + y - x + 1, 0))} of ${fmt(st.total || 0)} lines` : "not read",
+    st.writes ? `written ${st.writes}×` : "not written", st.created && "new file",
+    st.instr && "instruction file", st.searched && "matched a search"].filter(Boolean).join(" · ");
+  const expect = st.expRead || st.expWrite ? `<p class="tvp-exp">Expected to be ${[st.expRead && "read", st.expWrite && "written"].filter(Boolean).join(" and ")}: ${
+    [st.expRead && (st.reads ? "read ✓" : "not read yet"), st.expWrite && (st.writes ? "written ✓" : "not written yet")].filter(Boolean).join(" · ")}</p>` : "";
+  $("#tvPanelBody").innerHTML = `
+    <h3 class="mono">${i >= 0 ? `<span class="dim">${esc(st.rel.slice(0, i + 1))}</span>` : ""}${esc(st.rel.slice(i + 1))}</h3>
+    <p class="tvp-sum">${esc(sum)}</p>
+    ${expect}
+    <div class="tvp-bar" data-tip="upper band: lines read · lower band: lines written">${bar(readSpans, "r")}${bar(writeSpans, "w")}</div>
+    <div class="tvp-axis num"><span>line 1</span><span>${fmt(total)}</span></div>
+    ${reads.length ? `<h4>Read</h4>${rows(reads, readText)}` : ""}
+    ${writes.length ? `<h4>Written</h4>${rows(writes, writeText)}` : ""}
+    ${searches.length ? `<h4>Matched by a search</h4>${rows(searches, e => `“${e.pattern || ""}”`)}` : ""}
+    ${st.log.length ? "" : `<p class="sub">Nothing in this session has touched this file${RP.on ? " yet" : ""}.</p>`}
+    <p class="tvp-actions"><button type="button" data-panel-session>Open in the Session view</button></p>`;
+}
+
 function tvCounters() {
   if (!TV.counts || state.tab !== "tree") return;
   const C = TV.counts;
@@ -1168,14 +1626,23 @@ function tvCounters() {
   const touched = new Set([...C.read, ...C.written].filter(r => TV.files.has(r))).size;
   const t0 = TV.promptTs ?? TV.startTs;
   const end = TV.endTs ?? (state.meta.closed && !TV.replayClock ? TV.lastTs : now());
-  const clock = (ms) => ms == null || ms < 0 ? "—" : `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`;
   const share = C.readChars ? Math.round(C.instrChars / C.readChars * 100) : null;
-  const cell = (cls, k, v) => `<div class="tv-c ${cls}"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+  const cell = (cls, k, v, extra = "") => `<div class="tv-c ${cls}"${extra}><div class="k">${k}</div><div class="v">${v}</div></div>`;
+  const X = tvExpectScore();
+  const missing = (items) => {
+    const m = items.filter(i => !i.ok).map(i => i.p);
+    return ` data-tip="${esc(m.length ? "not yet:\n" + m.join("\n") : "all done")}"`;
+  };
   $("#tvCounters").innerHTML = [
     cell("read", "files read", `${fmt(inTree)}<small> / ${fmt(total)}${C.outsideRead.size ? ` +${C.outsideRead.size} outside` : ""}</small>`),
     cell("write", "files written", `${fmt(C.written.size)}<small>${C.created.size ? ` · ${C.created.size} new` : ""}</small>`),
-    cell("", "untouched", `${fmt(Math.max(0, total - touched))}`),
-    cell("", "lines read / written", `<span style="color:var(--read-ink)">${fmt(C.linesRead)}</span><small> / <span style="color:var(--write-ink)">${fmt(C.linesWritten)}</span></small>`),
+    ...(X ? [
+      cell("read", TV.editing ? "expected reads · editing" : "expected reads", `${X.rOk}<small> / ${X.r.length}</small>`, missing(X.r)),
+      cell("write", "expected writes", `${X.wOk}<small> / ${X.w.length}</small>`, missing(X.w)),
+    ] : [
+      cell("", "untouched", `${fmt(Math.max(0, total - touched))}`),
+      cell("", "lines read / written", `<span style="color:var(--read-ink)">${fmt(C.linesRead)}</span><small> / <span style="color:var(--write-ink)">${fmt(C.linesWritten)}</span></small>`),
+    ]),
     cell("instr", "instructions", share == null ? "—" : `${share}%<small> of reading</small>`),
     cell("", "first edit", TV.firstEditTs == null ? `—<small>${TV.readBeforeEdit ? ` ${TV.readBeforeEdit} files read` : ""}</small>`
       : `${clock(TV.firstEditTs - t0)}<small> · ${TV.readBeforeEdit} read</small>`),
@@ -1185,6 +1652,7 @@ function tvCounters() {
   if (TV.tickerAt && now() - TV.tickerAt > TV.idleAfter && !TV.pendingById.size) $("#tvTicker").classList.add("stale");
   const sub = C.subRead.size;
   $("#tvLabel").textContent = [state.replay ? "replay" : state.follow ? "following" : "",
+    TV.expect && !TV.editing ? `expecting: ${TV.expect.name}` : "",
     state.meta.label || "", sub ? `subagents read ${sub} file${sub === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ");
 }
 setInterval(tvCounters, 500);
@@ -1197,9 +1665,10 @@ function tvReplayAll() {
   for (const e of state.events) tvApply(e);
   TV.animate = anim;
   tvCounters();
+  tvPanelRender();
 }
 
-async function tvLoad(root) {
+async function tvLoad(root, { events = null } = {}) {
   if (!root) return;
   if (TV.listing && (root === TV.root || root === TV.real)) { tvReset(); tvReplayAll(); return; }
   try {
@@ -1207,7 +1676,15 @@ async function tvLoad(root) {
     const listing = await r.json();
     const want = state.meta.project || state.meta.cwd || state.followRoot;
     if (want && want !== root && !state.replay) return;   // the session changed while loading
-    tvBuild(listing);
+    // A replay file from another machine can name a folder that is not here: draw what it touched.
+    if (events && !listing.files.length) {
+      const rels = new Set();
+      for (const e of events) for (const p of [e.path, ...(e.files || [])]) {
+        if (p && p.startsWith(root + "/")) rels.add(p.slice(root.length + 1));
+      }
+      Object.assign(listing, { files: [...rels].sort(), total: rels.size, source: "replay" });
+    }
+    tvBuild(listing, events || state.events);
   } catch { /* server down */ }
 }
 
@@ -1333,8 +1810,9 @@ function setTab(tab) {
   if (tab === "session") render();
   if (tab === "tree") {
     if (!TV.listing) tvLoad(state.meta.project || state.meta.cwd || state.followRoot);
-    requestAnimationFrame(() => { tvLayout(); tvCounters(); tvCallout(); });
+    setTimeout(() => { tvLayout(); tvCounters(); tvCallout(); }, 0);
   }
+  tvPanelRender();
   const q = new URLSearchParams(location.search);
   q.set("view", tab); q.delete("tab");
   history.replaceState({}, "", location.pathname + "?" + q.toString());
@@ -1354,7 +1832,7 @@ function setProjector(on) {
   }
   TV.layoutKey = "";
   if (on && state.tab !== "tree") setTab("tree");
-  requestAnimationFrame(tvLayout);
+  setTimeout(tvLayout, 0);
 }
 $("#tProjector").addEventListener("click", () => setProjector(!document.body.classList.contains("projector")));
 // The map's height depends on the ticker and counters above it; lay out whenever it changes.
@@ -1363,9 +1841,11 @@ new ResizeObserver(() => tvLayout()).observe($("#tvMap"));
 /* ---------------------------------------------------------------- tooltip */
 const tip = $("#tip");
 document.addEventListener("mousemove", (ev) => {
-  const t = ev.target.closest?.("[data-tip]");
-  if (!t) { tip.style.opacity = 0; return; }
-  tip.textContent = t.dataset.tip;
+  const tile = ev.target.closest?.(".tv-map .t[data-rel]");
+  const t = tile || ev.target.closest?.("[data-tip]");
+  const st = tile && TV.files.get(tile.dataset.rel);
+  if (!t || (tile && !st)) { tip.style.opacity = 0; return; }
+  tip.textContent = tile ? tvTipText(st) : t.dataset.tip;
   tip.style.opacity = 1;
   tip.style.left = Math.min(ev.clientX + 12, innerWidth - tip.offsetWidth - 8) + "px";
   tip.style.top = (ev.clientY + 16) + "px";
@@ -1428,6 +1908,7 @@ function connect(sid, { keepTree = false } = {}) {
   if (!keepTree) TV.listing = TV.listing && state.follow ? TV.listing : null;
   render();
   openStream(live.gen);
+  tvExportLink();
 }
 
 function openStream(gen) {
@@ -1509,67 +1990,205 @@ function follow(target) {
   es.onerror = () => { es.close(); if (followES === es) setTimeout(() => follow(target), 1000); };
 }
 
-async function replay(sid) {
-  const speed = Math.max(0.05, parseFloat(Q.get("speed") || "1"));
-  const maxGap = parseFloat(Q.get("maxgap") || "0") * 1000;
-  const r = await fetch(`/api/events/${encodeURIComponent(sid)}?offset=0`);
-  const d = await r.json();
-  const all = d.events.filter(e => e.ts);
-  state.sid = sid; state.meta = { ...d.meta, closed: false };
-  $("#cwd").textContent = d.meta.cwd || "";
+// Replay plays any recorded session back through the Tree view: at its own pace, faster, or
+// one step at a time, where a step is one read, search or write and the waits between are gone.
+const RP = { on: false, bundle: null, all: [], at: [], frames: [], pos: 0, playing: false, rate: 1,
+             skipWaits: false, base: 0, t0: 0, timer: null, blobUrl: null };
+const STEP_KINDS = new Set(["read", "instructions", "edit", "write", "search"]);
+
+function rpTimeline() {
+  const maxGap = RP.skipWaits ? 1000 : parseFloat(Q.get("maxgap") || "0") * 1000;
   // Start just before the first prompt: the wait before anyone typed is not the agent's time.
-  const p = all.find(e => e.kind === "prompt");
-  const startIdx = 0;
-  const origin = p ? p.ts - 1000 : (all[0]?.ts || 0);
-  // Virtual timeline: original gaps, optionally capped, scaled by speed.
+  const p = RP.all.find(e => e.kind === "prompt");
+  const origin = p ? p.ts - 1000 : (RP.all[0]?.ts || 0);
   let vt = 0, prev = origin;
-  const at = all.map(e => { const gap = Math.max(0, e.ts - prev); vt += maxGap ? Math.min(gap, maxGap) : gap; prev = Math.max(prev, e.ts); return e.ts < origin ? 0 : vt; });
-  const duration = at[at.length - 1] || 1;
+  RP.at = RP.all.map(e => {
+    if (e.ts < origin) return 0;
+    const gap = Math.max(0, e.ts - prev);
+    vt += maxGap ? Math.min(gap, maxGap) : gap;
+    prev = Math.max(prev, e.ts);
+    return vt;
+  });
+  RP.frames = [];
+  const lastInstr = {};
+  RP.all.forEach((e, i) => {
+    if (!STEP_KINDS.has(e.kind)) return;
+    if (e.kind === "instructions") {
+      if (lastInstr[e.path] != null && Math.abs(e.ts - lastInstr[e.path]) < 5000) return;
+      lastInstr[e.path] = e.ts;
+    }
+    RP.frames.push(i);
+  });
+}
+
+function rpSeek(target) {
+  target = Math.max(0, Math.min(RP.all.length, target));
+  let animate = true;
+  if (target < RP.pos) {   // going back rebuilds from the start, quietly
+    state.events = []; RP.pos = 0;
+    TV.animate = false;
+    if (TV.listing) tvReset();
+    animate = false;
+  }
+  TV.animate = animate;
+  while (RP.pos < target) {
+    const e = RP.all[RP.pos++];
+    state.events.push(e);
+    if (TV.listing) tvApply(e);
+  }
+  TV.animate = true;
+  tvPanelRender();
+  tvCounters();
+  rpUi();
+  if (state.tab === "session") scheduleRender();
+}
+
+const rpVirtual = () => RP.playing ? RP.base + (performance.now() - RP.t0) * RP.rate : (RP.pos ? RP.at[RP.pos - 1] : 0);
+
+function rpPlay() {
+  if (RP.pos >= RP.all.length) rpSeek(0);
+  RP.playing = true;
+  RP.base = RP.pos ? RP.at[RP.pos - 1] : 0;
+  RP.t0 = performance.now();
+  clearTimeout(RP.timer);
+  rpTick();
+}
+
+function rpPause() {
+  RP.playing = false;
+  clearTimeout(RP.timer);
+  rpUi();
+}
+
+function rpTick() {
+  if (!RP.playing) return;
+  const v = rpVirtual();
+  let target = RP.pos;
+  while (target < RP.all.length && RP.at[target] <= v) target++;
+  if (target > RP.pos) rpSeek(target);
+  if (RP.pos >= RP.all.length) { rpPause(); return; }
+  rpUi();
+  RP.timer = setTimeout(rpTick, 40);
+}
+
+function rpStep(dir) {
+  rpPause();
+  if (dir > 0) {
+    const f = RP.frames.find(i => i >= RP.pos);
+    rpSeek(f == null ? RP.all.length : f + 1);
+  } else {
+    const done = RP.frames.filter(i => i < RP.pos);
+    rpSeek(done.length >= 2 ? done[done.length - 2] + 1 : 0);
+  }
+}
+
+function rpSetRate(r) {
+  const v = rpVirtual();
+  RP.rate = r;
+  if (RP.playing) { RP.base = v; RP.t0 = performance.now(); }
+  rpUi();
+}
+
+function rpSetSkip(on) {
+  RP.skipWaits = on;
+  rpTimeline();
+  if (RP.playing) { RP.base = RP.pos ? RP.at[RP.pos - 1] : 0; RP.t0 = performance.now(); }
+  rpUi();
+}
+
+function rpUi() {
+  if (!RP.on) return;
+  const bar = $("#tvReplay");
+  const done = RP.frames.filter(i => i < RP.pos).length, total = RP.frames.length;
+  const end = RP.at[RP.at.length - 1] || 0, v = Math.min(rpVirtual(), end);
+  bar.querySelector("[data-r=play]").textContent = RP.playing ? "❚❚ pause" : "▶ play";
+  const scrub = bar.querySelector("[data-r=scrub]");
+  scrub.max = String(total); scrub.value = String(done);
+  const speed = bar.querySelector("[data-r=speed]");
+  if ([...speed.options].some(o => o.value === String(RP.rate))) speed.value = String(RP.rate);
+  bar.querySelector("[data-r=gaps]").checked = RP.skipWaits;
+  bar.querySelector(".rp-pos").textContent = `step ${done} of ${total} · ${clock(v)} of ${clock(end)}`;
+  $("#tvProgress").style.width = (end ? v / end * 100 : 0) + "%";
   const badge = $("#tvTicker .tv-badge");
   badge.hidden = false;
-  const bar = $("#tvProgress");
-  bar.hidden = false;
+  badge.textContent = RP.playing ? `replay ×${RP.rate}` : `replay · step ${done}/${total}`;
+}
 
-  let started = performance.now(), paused = 0, pausedAt = null, i = startIdx, rate = speed;
-  const elapsed = () => ((pausedAt ?? performance.now()) - started - paused) * rate;
-  // Counters read the replayed session's own clock.
+function rpStop() {
+  if (!RP.on) return;
+  rpPause();
+  RP.on = false;
+  TV.replayClock = null;
+  state.replay = null;
+  $("#tvReplay").hidden = true; $("#tvProgress").hidden = true;
+  $("#tvTicker .tv-badge").hidden = true;
+}
+
+async function startReplay(bundle) {
+  unfollow();
+  live.gen++; live.es?.close(); live.es = null;
+  rpPause();
+  RP.on = true; RP.bundle = bundle;
+  RP.all = (bundle.events || []).filter(e => e && e.ts);
+  RP.pos = 0;
+  RP.rate = Math.max(0.05, parseFloat(Q.get("speed") || "1"));
+  RP.skipWaits = Q.get("gaps") === "skip";
+  rpTimeline();
+  state.replay = bundle.id || "file";
+  state.sid = bundle.id || null;
+  state.meta = { ...(bundle.meta || {}), closed: false };
+  state.events = [];
+  $("#cwd").textContent = state.meta.cwd || "";
+  $("#tvReplay").hidden = false; $("#tvProgress").hidden = false;
+  // Counters read the replayed session's own clock: the time of the last step shown.
   TV.replayClock = () => {
-    const k = Math.min(Math.max(0, i - 1), all.length - 1);
-    if (!all.length) return Date.now();
-    const v = elapsed(), base = at[k] || 0;
-    return all[k].ts + Math.max(0, Math.min(v - base, (at[k + 1] ?? base) - base));
+    if (!RP.all.length) return Date.now();
+    const k = RP.pos - 1;
+    if (k < 0) return RP.all[0].ts;
+    if (!RP.playing) return RP.all[k].ts;
+    const next = RP.at[k + 1];
+    return RP.all[k].ts + Math.max(0, Math.min(rpVirtual() - RP.at[k], next == null ? 0 : next - RP.at[k]));
   };
-  const restart = () => {
-    state.events = []; i = 0; started = performance.now(); paused = 0; pausedAt = null;
-    tvReset(); tvCounters();
-    if (TV.listing) tvBuild(TV.listing);
-  };
-  const label = () => { badge.textContent = `replay ×${rate}${pausedAt ? " · paused" : ""}`; };
-  label();
-  await tvLoad(d.meta.project || d.meta.cwd);
-  TV.animate = true;
-  const step = () => {
-    const v = elapsed();
-    while (i < all.length && at[i] <= v) {
-      state.events.push(all[i]);
-      if (TV.listing) tvApply(all[i]);
-      i++;
-    }
-    bar.style.width = Math.min(100, v / duration * 100) + "%";
-    requestAnimationFrame(step);
-  };
-  requestAnimationFrame(step);
-  document.addEventListener("keydown", (ev) => {
-    if (ev.target.closest?.("input, select, textarea")) return;
-    if (ev.key === " ") { ev.preventDefault(); if (pausedAt) { paused += performance.now() - pausedAt; pausedAt = null; } else pausedAt = performance.now(); label(); }
-    if (ev.key === "r") restart();
-    if (ev.key === "+" || ev.key === "=" || ev.key === "-") {
-      const v = elapsed();
-      rate = ev.key === "-" ? Math.max(0.25, rate / 2) : Math.min(64, rate * 2);
-      started = (pausedAt ?? performance.now()) - paused - v / rate;
-      label();
-    }
-  });
+  if (RP.blobUrl) URL.revokeObjectURL(RP.blobUrl);
+  RP.blobUrl = bundle.source === "file"
+    ? URL.createObjectURL(new Blob([JSON.stringify(bundle)], { type: "application/json" })) : null;
+  tvExportLink();
+  TV.listing = null;
+  await tvLoad(state.meta.project || state.meta.cwd, { events: RP.all });
+  rpUi();
+  if (Q.get("step") !== "1") rpPlay();
+}
+
+async function replay(sid) {
+  try {
+    const r = await fetch(`/api/events/${encodeURIComponent(sid)}?offset=0`);
+    const d = await r.json();
+    if (!d.events.length) throw new Error("empty");
+    await startReplay({ format: "rwm-session", id: sid, meta: d.meta, events: d.events, source: "server" });
+  } catch { tvTicker("idle", "", `no recorded session ${sid} on this machine`, ""); }
+}
+
+async function replayFile(file) {
+  try {
+    const bundle = JSON.parse(await file.text());
+    if (bundle.format !== "rwm-session" || !Array.isArray(bundle.events)) throw new Error("not a read/write monitor replay file");
+    bundle.source = "file";
+    const q = new URLSearchParams(location.search);
+    q.set("replay", "file"); q.set("view", "tree"); q.set("step", "1"); q.delete("follow");
+    history.replaceState({}, "", "/?" + q.toString());
+    setTab("tree");
+    await startReplay(bundle);
+  } catch (err) { tvTicker("idle", "", String(err.message || err), ""); }
+}
+
+function tvExportLink() {
+  const a = $("#tvExport");
+  const href = RP.on && RP.blobUrl ? RP.blobUrl : (state.sid ? `/api/export/${encodeURIComponent(state.sid)}` : null);
+  a.hidden = !href;
+  if (!href) return;
+  a.href = href;
+  if (RP.on && RP.blobUrl) a.setAttribute("download", `rwm-${(state.sid || "session").slice(0, 8)}.json`);
+  else a.removeAttribute("download");
 }
 
 /* ---------------------------------------------------------------- controls */
@@ -1594,7 +2213,7 @@ $("#tTheme").addEventListener("click", () => {
 toggle("#pOnlyCold", "onlyCold", renderProject);
 toggle("#pColdDirs", "coldDirs", renderProject);
 $("#sessions").addEventListener("change", (e) => {
-  unfollow(); state.replay = null;
+  unfollow(); rpStop();
   connect(e.target.value);
   const s = (state.sessions || []).find(x => x.id === state.sid);
   if (s?.project) state.proj = s.project;
@@ -1605,21 +2224,87 @@ $("#projects").addEventListener("change", (e) => {
   state.proj = e.target.value;
   const first = (state.sessions || []).find(s => s.project === state.proj);
   if (first && state.tab !== "project") {
-    unfollow();
+    unfollow(); rpStop();
     connect(first.id);
     history.replaceState({}, "", "/s/" + encodeURIComponent(state.sid) + `?view=${state.tab}`);
   }
   state.agg = null; loadSessions(); if (state.tab === "project") loadAggregate();
 });
 document.addEventListener("keydown", (ev) => {
-  if (ev.target.closest?.("input, select, textarea") || ev.metaKey || ev.ctrlKey) return;
+  if (ev.target.closest?.("input, select, textarea") || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+  if (ev.key === "Escape") { if (TV.editing) tvEditClose(TV.editing.prev); else tvPanelClose(); }
   if (ev.key === "p") setProjector(!document.body.classList.contains("projector"));
   if (ev.key === "t") setTab("tree");
+  if (ev.key === "l" && state.tab === "tree") tvSetLayout(TV.layout === "map" ? "outline" : "map");
+  if (ev.key === "h") { document.body.classList.toggle("bare"); TV.layoutKey = ""; setTimeout(tvLayout, 0); }
+  if (!RP.on) return;
+  if (ev.key === " ") { ev.preventDefault(); RP.playing ? rpPause() : rpPlay(); }
+  if (ev.key === "ArrowRight") { ev.preventDefault(); rpStep(1); }
+  if (ev.key === "ArrowLeft") { ev.preventDefault(); rpStep(-1); }
+  if (ev.key === "Home") { ev.preventDefault(); rpPause(); rpSeek(0); }
+  if (ev.key === "End") { ev.preventDefault(); rpPause(); rpSeek(RP.all.length); }
+  if (ev.key === "r") { rpSeek(0); rpPlay(); }
+  if (ev.key === "g") rpSetSkip(!RP.skipWaits);
+  if (ev.key === "+" || ev.key === "=") rpSetRate(Math.min(64, RP.rate * 2));
+  if (ev.key === "-") rpSetRate(Math.max(0.25, RP.rate / 2));
+});
+
+for (const b of document.querySelectorAll("[data-layout]")) b.addEventListener("click", () => tvSetLayout(b.dataset.layout));
+$("#tvExpect").addEventListener("change", (e) => tvExpectUse(e.target.value));
+$("#tvExpectEdit").addEventListener("click", () => tvEditStart());
+for (const b of document.querySelectorAll("[data-emode]")) b.addEventListener("click", () => tvEditMode(b.dataset.emode));
+$("#tvEditText").addEventListener("click", () => { $("#tvEditArea").hidden = !$("#tvEditArea").hidden; });
+$("#tvEditArea").addEventListener("input", () => tvEditSync(true));
+$("#tvEditSave").addEventListener("click", () => tvEditSave());
+$("#tvEditCancel").addEventListener("click", () => tvEditClose(TV.editing?.prev || null));
+$("#tvReplayBtn").addEventListener("click", () => {
+  if (!state.sid) return;
+  const q = new URLSearchParams({ replay: state.sid, view: "tree", layout: TV.layout, step: "1" });
+  if (TV.expect && !TV.editing) q.set("expect", TV.expect.name);
+  if (document.body.classList.contains("projector")) q.set("projector", "1");
+  location.href = "/?" + q.toString();
+});
+$("#tvImport").addEventListener("change", (e) => { if (e.target.files[0]) replayFile(e.target.files[0]); e.target.value = ""; });
+$("#tvReplay").addEventListener("click", (ev) => {
+  const r = ev.target.closest?.("button[data-r]")?.dataset.r;
+  if (r === "start") { rpPause(); rpSeek(0); }
+  if (r === "prev") rpStep(-1);
+  if (r === "play") RP.playing ? rpPause() : rpPlay();
+  if (r === "next") rpStep(1);
+  if (r === "end") { rpPause(); rpSeek(RP.all.length); }
+});
+$("#tvReplay [data-r=speed]").addEventListener("change", (e) => rpSetRate(parseFloat(e.target.value)));
+$("#tvReplay [data-r=gaps]").addEventListener("change", (e) => rpSetSkip(e.target.checked));
+$("#tvReplay [data-r=scrub]").addEventListener("input", (e) => {
+  rpPause();
+  const k = +e.target.value;
+  rpSeek(k ? RP.frames[k - 1] + 1 : 0);
+});
+$("#tvMap").addEventListener("click", (ev) => {
+  const el = ev.target.closest?.(".t[data-rel]");
+  const st = el && TV.files.get(el.dataset.rel);
+  if (!st) return;
+  if (TV.editing) tvEditToggle(st); else tvPanelOpen(st);
+});
+$("#tvPanel").addEventListener("click", (ev) => {
+  if (ev.target.closest?.("[data-close]")) tvPanelClose();
+  if (ev.target.closest?.("[data-panel-session]") && TV.panel) {
+    const rel = TV.panel.rel;
+    tvPanelClose();
+    setTab("session");
+    setTimeout(() => {
+      const card = [...document.querySelectorAll(".file[data-path]")].find(c => c.dataset.path.endsWith("/" + rel));
+      card?.scrollIntoView({ block: "center" });
+    }, 120);
+  }
 });
 
 (async () => {
   try { state.config = await (await fetch("/api/config")).json(); } catch {}
   TV.instrRes = (state.config.instruction_files || []).map(globRe);
+  TV.layout = ["map", "outline"].includes(Q.get("layout")) ? Q.get("layout")
+    : (localStorage.getItem("rwm-layout") === "outline" ? "outline" : "map");
+  for (const b of document.querySelectorAll("[data-layout]")) b.setAttribute("aria-pressed", String(b.dataset.layout === TV.layout));
   const t = Q.get("theme") || localStorage.getItem("rwm-theme") || state.config.theme;
   if (t) document.documentElement.dataset.theme = t;
   if (Q.get("project")) state.proj = Q.get("project");
@@ -1627,7 +2312,9 @@ document.addEventListener("keydown", (ev) => {
   setTab(["tree", "session", "project"].includes(view) ? view : "session");
   if (["1", "true", "on"].includes(Q.get("projector") || "")) setProjector(true);
 
-  if (state.replay) {
+  if (state.replay === "file") {
+    tvTicker("idle", "", "open the replay file again to play it", "");
+  } else if (state.replay) {
     await replay(state.replay);
   } else if (state.follow) {
     follow(state.follow);
