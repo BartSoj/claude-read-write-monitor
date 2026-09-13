@@ -344,7 +344,7 @@ body.projector .tv {
       <span class="lg"><i class="sw" style="box-shadow: inset 0 0 0 2px var(--read)"></i>searched</span>
       <span class="lg"><i class="sw" style="background: linear-gradient(225deg, var(--mark) 0 30%, var(--tile) 30%)"></i>instructions</span>
       <span class="lg"><i class="sw" style="background: repeating-linear-gradient(45deg, var(--read) 0 3px, var(--tile) 3px 6px)"></i>subagent</span>
-      <span class="note-shell" id="tvNote">Shell reads are inferred from cat, sed, head, tail and grep. @file references, MCP and web results are not seen.</span>
+      <span class="note-shell" id="tvNote">Shell reads and writes are inferred from commands. @file references, MCP and web results are not seen.</span>
       <span class="label" id="tvLabel"></span>
     </div>
   </div>
@@ -374,9 +374,10 @@ body.projector .tv {
   <tbody id="tbody"></tbody>
 </table>
 <p class="note" id="blindspots">Covers the Read, Edit, Write, Grep and Glob tools plus instruction-file loads.
-  Reads and searches through Bash are inferred from <span class="mono">cat</span>, <span class="mono">sed</span>,
-  <span class="mono">head</span>, <span class="mono">tail</span> and <span class="mono">grep</span> commands and marked
-  <span class="badge">shell</span>; anything else a command prints is not counted. Context arriving by
+  Reads, searches and writes through Bash are inferred from the command — <span class="mono">cat</span>,
+  <span class="mono">sed</span>, <span class="mono">head</span>, <span class="mono">tail</span>, <span class="mono">grep</span>,
+  redirects, <span class="mono">tee</span>, <span class="mono">sed -i</span>, <span class="mono">cp</span>, <span class="mono">mv</span> —
+  and marked <span class="badge">shell</span>; files changed from inside scripts are not seen. Context arriving by
   <span class="mono">@file</span> reference, WebFetch, MCP tools or subagent summaries is not recorded.</p>
 
 <h2>Timeline</h2>
