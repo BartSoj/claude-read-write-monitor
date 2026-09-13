@@ -81,8 +81,8 @@
     --tile:           #2c2c29;
     --mark:           #ffffff;
 }
-/* Stage: the projector default. Blue means read, orange means written — the same
-   hues the talk's slides use. Text tints are lifted so every label clears 7:1. */
+/* Stage: the projector default. Blue means read, orange means written, on a dark
+   surface meant for a room. Text tints are lifted so every label clears 7:1. */
 :root[data-theme="stage"] {
     color-scheme: dark;
     --surface-0:      #0b0f17;
@@ -1478,8 +1478,18 @@ function ingest(events, serverMs, history) {
 
 /* ---------------------------------------------------------------- follow and replay */
 
+// Picking a session by hand ends following; otherwise the next start would pull the page away.
+let followES = null;
+function unfollow() {
+  state.follow = null;
+  followES?.close();
+  followES = null;
+}
+
 function follow(target) {
+  if (!state.follow) return;
   const es = new EventSource(`/api/follow?project=${encodeURIComponent(target)}`);
+  followES = es;
   es.addEventListener("waiting", (m) => {
     const d = JSON.parse(m.data);
     state.followRoot = d.project;
@@ -1495,7 +1505,7 @@ function follow(target) {
     connect(d.id, { keepTree: true });
     loadSessions();
   });
-  es.onerror = () => { es.close(); setTimeout(() => follow(target), 1000); };
+  es.onerror = () => { es.close(); if (followES === es) setTimeout(() => follow(target), 1000); };
 }
 
 async function replay(sid) {
@@ -1583,7 +1593,7 @@ $("#tTheme").addEventListener("click", () => {
 toggle("#pOnlyCold", "onlyCold", renderProject);
 toggle("#pColdDirs", "coldDirs", renderProject);
 $("#sessions").addEventListener("change", (e) => {
-  state.follow = null; state.replay = null;
+  unfollow(); state.replay = null;
   connect(e.target.value);
   const s = (state.sessions || []).find(x => x.id === state.sid);
   if (s?.project) state.proj = s.project;
@@ -1594,7 +1604,7 @@ $("#projects").addEventListener("change", (e) => {
   state.proj = e.target.value;
   const first = (state.sessions || []).find(s => s.project === state.proj);
   if (first && state.tab !== "project") {
-    state.follow = null;
+    unfollow();
     connect(first.id);
     history.replaceState({}, "", "/s/" + encodeURIComponent(state.sid) + `?view=${state.tab}`);
   }
