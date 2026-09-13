@@ -12,6 +12,8 @@ machine-wide start log so a page can switch to a new session as it starts.
   serve.py ensure   start it if it isn't already listening (called by SessionStart)
   serve.py run      run in the foreground
   serve.py stop     shut it down
+  serve.py export <session_id> [file.json]   write one session as a replay file
+  serve.py import <file.json> [--force]      store a replay file as a session on this machine
 
 Env: RWM_PORT (default 7788), RWM_DATA_DIR, RWM_IDLE_MINUTES (default 120),
 RWM_TREE_MAX, RWM_IGNORE, RWM_INSTRUCTION_FILES, RWM_THEME, RWM_FOLLOW_RECENT_MINUTES.
@@ -21,6 +23,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import signal
 import socket
 import subprocess
@@ -354,6 +357,154 @@ def aggregate(project: str) -> dict:
     return result
 
 
+# ------------------------------------------------------------------ replay files
+# A session travels as one JSON bundle: its meta and its records, exactly as logged.
+# Paths and line numbers only, like the log itself.
+
+BUNDLE_FORMAT = "rwm-session"
+SAFE_ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+
+
+def export_bundle(session_id: str) -> dict | None:
+    if not SAFE_ID.match(session_id or ""):
+        return None
+    if not os.path.exists(os.path.join(sessions_dir(), session_id, "events.jsonl")):
+        return None
+    events, _ = read_chunk(session_id, 0)
+    return {"format": BUNDLE_FORMAT, "v": 1, "id": session_id,
+            "meta": session_meta(session_id), "events": events}
+
+
+def import_bundle(bundle: dict, force: bool = False) -> str:
+    """Store a bundle as a session on this machine, so it is listed and replayable here."""
+    if not isinstance(bundle, dict) or bundle.get("format") != BUNDLE_FORMAT:
+        raise ValueError("not a read-write-monitor session file")
+    sid = str(bundle.get("id") or "")
+    if not SAFE_ID.match(sid):
+        raise ValueError("the file's session id is not usable as a directory name")
+    events = bundle.get("events")
+    if not isinstance(events, list) or not all(isinstance(e, dict) for e in events):
+        raise ValueError("the file holds no records")
+    sd = os.path.join(sessions_dir(), sid)
+    if os.path.exists(os.path.join(sd, "events.jsonl")) and not force:
+        raise FileExistsError(f"session {sid} already exists here (use --force to replace it)")
+    os.makedirs(sd, exist_ok=True)
+    with open(os.path.join(sd, "events.jsonl"), "w", encoding="utf-8") as f:
+        for e in events:
+            f.write(json.dumps(e, separators=(",", ":"), ensure_ascii=False) + "\n")
+    meta = dict(bundle.get("meta") or {})
+    meta.update({"session_id": sid, "closed": True, "imported_at": int(time.time() * 1000)})
+    with open(os.path.join(sd, "meta.json"), "w", encoding="utf-8") as f:
+        json.dump(meta, f, ensure_ascii=False)
+    with open(os.path.join(sd, "seq"), "w") as f:
+        f.write(str(max([int(e.get("seq") or 0) for e in events] + [0])))
+    return sid
+
+
+# ------------------------------------------------------------------ expectation sets
+# The files a task should read and the files it should change, written by a person and kept
+# on this machine, outside every project, so an agent at work never sees the answer key.
+#
+#   # expectation set: new-guide
+#   root: /abs/path/to/project
+#   read needs/jobs.md
+#   read methods/*.md          (a glob is satisfied by any one match)
+#   write guides/*.md
+
+NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+
+
+def expectations_dir() -> str:
+    return os.path.join(data_dir(), "expectations")
+
+
+def _clean_pattern(p) -> str | None:
+    p = str(p).strip()
+    if not p or "\n" in p or p.startswith("/") or p.startswith("~") or ".." in p.split("/"):
+        return None
+    return p
+
+
+def parse_expectations(text: str, name: str) -> dict:
+    root, reads, writes, note = None, [], [], []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith("#"):
+            body = line.lstrip("#").strip()
+            if body and not body.lower().startswith("expectation set:"):
+                note.append(body)
+            continue
+        low = line.lower()
+        if low.startswith("root:"):
+            root = line[5:].strip() or None
+            continue
+        bucket = reads
+        if low.startswith("write "):
+            bucket, line = writes, line[6:]
+        elif low.startswith("read "):
+            line = line[5:]
+        p = _clean_pattern(line)
+        if p and p not in bucket:
+            bucket.append(p)
+    return {"name": name, "root": root, "reads": reads, "writes": writes, "note": " ".join(note)[:400]}
+
+
+def format_expectations(s: dict) -> str:
+    lines = [f"# expectation set: {s['name']}"]
+    if s.get("note"):
+        lines.append(f"# {s['note']}")
+    if s.get("root"):
+        lines.append(f"root: {s['root']}")
+    lines += [f"read {p}" for p in s.get("reads") or []]
+    lines += [f"write {p}" for p in s.get("writes") or []]
+    return "\n".join(lines) + "\n"
+
+
+def list_expectations(root: str | None = None) -> list[dict]:
+    try:
+        names = sorted(n for n in os.listdir(expectations_dir()) if n.endswith(".txt"))
+    except OSError:
+        return []
+    out = []
+    target = norm(root) if root else None
+    for n in names:
+        try:
+            with open(os.path.join(expectations_dir(), n), encoding="utf-8") as f:
+                s = parse_expectations(f.read(65536), n[:-4])
+        except OSError:
+            continue
+        if target and s["root"] and norm(s["root"]) != target:
+            continue
+        out.append(s)
+    return out
+
+
+def save_expectations(payload: dict) -> dict:
+    if not isinstance(payload, dict):
+        raise ValueError("expected a JSON object")
+    name = str(payload.get("name") or "").strip()
+    if not NAME_RE.match(name):
+        raise ValueError("name: letters, digits, dot, dash or underscore, up to 64 characters")
+    s = {"name": name, "root": str(payload.get("root") or "").strip() or None,
+         "note": str(payload.get("note") or "").strip().replace("\n", " ")[:400],
+         "reads": [], "writes": []}
+    for key in ("reads", "writes"):
+        for p in payload.get(key) or []:
+            c = _clean_pattern(p)
+            if c is None:
+                raise ValueError(f"not a project-relative path: {p!r}")
+            if c not in s[key]:
+                s[key].append(c)
+    os.makedirs(expectations_dir(), exist_ok=True)
+    path = os.path.join(expectations_dir(), name + ".txt")
+    with open(path + ".tmp", "w", encoding="utf-8") as f:
+        f.write(format_expectations(s))
+    os.replace(path + ".tmp", path)
+    return s
+
+
 # ------------------------------------------------------------------ follow
 
 def norm(path: str) -> str:
@@ -384,11 +535,13 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):  # silence stderr chatter
         pass
 
-    def _send(self, code: int, body: bytes, ctype: str) -> None:
+    def _send(self, code: int, body: bytes, ctype: str, headers: dict | None = None) -> None:
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        for k, v in (headers or {}).items():
+            self.send_header(k, v)
         self.end_headers()
         try:
             self.wfile.write(body)
@@ -543,6 +696,17 @@ class Handler(BaseHTTPRequestHandler):
             if not proj:
                 return self._send(400, b"project required", "text/plain")
             return self._json(aggregate(proj))
+        if p == "/api/expectations":
+            return self._json({"dir": expectations_dir(), "sets": list_expectations(arg("root") or None)})
+        if p.startswith("/api/export/"):
+            sid = unquote(p[len("/api/export/"):]).strip("/")
+            bundle = export_bundle(sid)
+            if not bundle:
+                return self._send(404, b"no such session", "text/plain")
+            label = re.sub(r"[^A-Za-z0-9]+", "-", str(bundle["meta"].get("label") or "")).strip("-")[:40].lower()
+            fname = f"rwm-{label + '-' if label else ''}{sid[:8]}.json"
+            return self._send(200, json.dumps(bundle).encode(), "application/json; charset=utf-8",
+                              {"Content-Disposition": f'attachment; filename="{fname}"'})
         if p.startswith("/api/events/"):
             sid = unquote(p[len("/api/events/"):]).strip("/")
             try:
@@ -563,6 +727,26 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(400, b"project required", "text/plain")
             return self.follow(norm(target))
         return self._send(404, b"not found", "text/plain")
+
+    def do_POST(self):
+        touch()
+        if urlparse(self.path).path != "/api/expectations":
+            return self._send(404, b"not found", "text/plain")
+        # A page on another origin cannot set a custom header on a simple request, so this
+        # keeps a stray form post from writing into the data directory.
+        if self.headers.get("X-RWM") != "1":
+            return self._send(403, b"missing X-RWM header", "text/plain")
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            n = 0
+        if n <= 0 or n > 65536:
+            return self._send(413, b"body must be 1 byte to 64 KB", "text/plain")
+        try:
+            saved = save_expectations(json.loads(self.rfile.read(n)))
+        except (ValueError, TypeError) as exc:
+            return self._send(400, str(exc).encode(), "text/plain; charset=utf-8")
+        return self._json(saved)
 
 
 def _idle_watchdog() -> None:
@@ -665,5 +849,25 @@ if __name__ == "__main__":
         sys.exit(0)
     if cmd == "status":
         print(json.dumps({"up": is_up(), "port": PORT, "data": data_dir()}))
+        sys.exit(0)
+    if cmd == "export" and len(sys.argv) > 2:
+        bundle = export_bundle(sys.argv[2])
+        if not bundle:
+            sys.exit(f"no session {sys.argv[2]} in {sessions_dir()}")
+        text = json.dumps(bundle)
+        if len(sys.argv) > 3:
+            with open(sys.argv[3], "w", encoding="utf-8") as f:
+                f.write(text)
+            print(f"wrote {sys.argv[3]}: {len(bundle['events'])} records")
+        else:
+            print(text)
+        sys.exit(0)
+    if cmd == "import" and len(sys.argv) > 2:
+        try:
+            with open(sys.argv[2], encoding="utf-8") as f:
+                sid = import_bundle(json.load(f), force="--force" in sys.argv)
+        except (OSError, ValueError, FileExistsError) as exc:
+            sys.exit(f"import failed: {exc}")
+        print(f"imported {sid} into {sessions_dir()}")
         sys.exit(0)
     sys.exit(run())
