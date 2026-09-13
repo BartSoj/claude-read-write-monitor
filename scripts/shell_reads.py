@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""read-write-monitor: infer which files a shell command read, searched or listed.
+"""read-write-monitor: infer which files a shell command read, searched, listed or wrote.
 
 This is a HEURISTIC. Claude Code agents often read and search through the Bash
 tool (`cat`, `sed -n`, `head`, `grep -r`, `find`) instead of Read/Grep/Glob.
@@ -39,8 +39,11 @@ _MAX_LINES = 50_000
 _MAX_DEPTH = 3
 
 # Placeholder for anything the shell would compute at run time ($(...), `...`,
-# heredocs, process substitution). A segment containing it is skipped.
+# process substitution). A segment containing it produces no reads/searches.
 _SUB = "\x00"
+# Marker words for stdin that comes from the command text: "\x01H<n>" is a heredoc
+# with n body lines ("\x01H" when unknown), "\x01S" a here-string (next word).
+_HEREDOC = "\x01"
 
 _OPCHARS = set("();<>|&")
 _OPS = sorted(["&>>", "<<<", ">>", "&&", "||", ";;", "|&", ">&", "<&", "&>", ">|", "<>", "<<",
@@ -60,6 +63,7 @@ _ALIASES = {
     "ggrep": "grep", "egrep": "grep", "fgrep": "grep", "gegrep": "grep", "gfgrep": "grep",
     "gsed": "sed", "ghead": "head", "gtail": "tail", "gcat": "cat", "gfind": "find", "gls": "ls",
     "gawk": "awk", "mawk": "awk", "nawk": "awk", "batcat": "bat", "fdfind": "fd", "gnl": "nl",
+    "gcp": "cp", "gmv": "mv", "gtouch": "touch", "gtee": "tee",
 }
 _WHOLE_READERS = {"cat", "nl", "bat", "less", "more"}
 _SEARCHERS = {"grep", "rg", "ag"}
@@ -103,6 +107,9 @@ def parse(command: str, cwd: str) -> list[dict]:
       {"op": "search", "cmd": "grep"|"rg"|"ag"|"git grep", "pattern": str, "scope": [abs,...],
        "files_only": bool, "single_file": bool, "cwd": abs}
       {"op": "list", "cmd": "find"|"fd"|"ls"|"rg --files"|"tree", "scope": [abs,...], "cwd": abs}
+      {"op": "write", "cmd": "cat"|"printf"|"echo"|"tee"|"sed"|"cp"|"mv"|"touch"|"perl"|...,
+       "path": abs, "mode": "append"|"overwrite"|"in-place"|"copy"|"move"|"touch", "lines": int|None}
+          lines = lines written when the command text alone says so (heredoc body, echo, printf)
     """
     try:
         if not isinstance(command, str) or not command.strip() or len(command) > _MAX_COMMAND:
@@ -252,22 +259,28 @@ def _skip_word(s: str, i: int) -> int:
     return i
 
 
-def _skip_heredocs(s: str, i: int, pending: list) -> int:
+def _skip_heredocs(s: str, i: int, pending: list):
+    """Skip heredoc bodies starting at s[i]; returns (new index, body line count per heredoc)."""
     n = len(s)
-    for delim, strip_tabs in pending:
+    counts = []
+    for delim, strip_tabs, _slot in pending:
+        count = 0
         while i < n:
             j = s.find("\n", i)
             line = s[i:] if j < 0 else s[i:j]
             i = n if j < 0 else j + 1
             if (line.lstrip("\t") if strip_tabs else line) == delim:
                 break
-    return i
+            count += 1
+        counts.append(count)
+    return i, counts
 
 
 def _prepare(s: str) -> str:
     """Quote-aware pre-pass before shlex: drops comments, line continuations, stderr redirects and
-    heredoc bodies; turns unquoted newlines into ';'; replaces $(...), `...`, <(...), heredocs and
-    here-strings with the _SUB marker; protects escaped operators (find's \\; and \\( )."""
+    heredoc bodies (never parsed as commands); turns unquoted newlines into ';'; replaces $(...),
+    `...` and <(...) with the _SUB marker and heredocs / here-strings with _HEREDOC marker words;
+    protects escaped operators (find's \\; and \\( )."""
     s = s.replace("\r\n", "\n")
     out: list[str] = []
     pending: list = []
@@ -331,7 +344,9 @@ def _prepare(s: str) -> str:
         if c == "\n":
             i += 1
             if pending:
-                i = _skip_heredocs(s, i, pending)
+                i, counts = _skip_heredocs(s, i, pending)
+                for (_d, _t, slot), count in zip(pending, counts):
+                    out[slot] = " %sH%d " % (_HEREDOC, count)
                 pending = []
             tail = "".join(out[-40:]).rstrip()
             if not tail or tail.endswith(("|", "&&")) or tail.endswith(";"):
@@ -354,7 +369,7 @@ def _prepare(s: str) -> str:
             continue
         if s.startswith("<<", i):
             if s.startswith("<<<", i):
-                out.append(" " + _SUB + " ")
+                out.append(" %sS " % _HEREDOC)
                 i += 3
                 continue
             i += 2
@@ -377,8 +392,8 @@ def _prepare(s: str) -> str:
                 else:
                     word.append(s[j])
                     j += 1
-            pending.append(("".join(word), strip_tabs))
-            out.append(" " + _SUB + " ")
+            pending.append(("".join(word), strip_tabs, len(out)))
+            out.append(" %sH " % _HEREDOC)
             i = j
             continue
         if c.isdigit() and (not out or last_char() in _WORD_START):
@@ -428,29 +443,56 @@ def _segments(command: str) -> list[dict]:
             items.append(("w", tok))
 
     segs: list[dict] = []
-    words: list[str] = []
-    redir: list = []
+
+    def fresh():
+        return {"kind": "cmd", "words": [], "redir": [], "herein": False, "herein_lines": None, "sep": None}
+
+    cur = fresh()
 
     def flush(sep):
-        nonlocal words, redir
-        if words or redir:
-            segs.append({"kind": "cmd", "words": words, "redir": redir, "sep": sep})
-        words, redir = [], []
+        nonlocal cur
+        if cur["words"] or cur["redir"]:
+            cur["sep"] = sep
+            segs.append(cur)
+        cur = fresh()
 
+    in_test = False  # inside [[ ... ]], where < and > compare strings
     i = 0
     while i < len(items):
         kind, val = items[i]
         if kind == "w":
-            words.append(val)
+            if val.startswith(_HEREDOC + "H"):
+                cur["herein"] = True
+                cur["herein_lines"] = int(val[2:]) if val[2:].isdigit() else None
+            elif val == _HEREDOC + "S":
+                cur["herein"] = True
+                if i + 1 < len(items) and items[i + 1][0] == "w":
+                    cur["herein_lines"] = items[i + 1][1].count("\n") + 1
+                    i += 1
+            else:
+                cur["words"].append(val)
+                if val == "[[":
+                    in_test = True
+                elif val == "]]":
+                    in_test = False
+        elif in_test and val in ("<", ">"):
+            cur["words"].append(val)
         elif val in _OUT_REDIRS or val in _IN_REDIRS:
             target = ""
             if i + 1 < len(items) and items[i + 1][0] == "w":
                 target = items[i + 1][1]
                 i += 1
-            redir.append((val, target))
+            cur["redir"].append((val, target))
         elif val in _SEPS:
+            in_test = False
             flush(val)
         elif val == "(":
+            if i + 1 < len(items) and items[i + 1] == ("op", "("):  # (( arithmetic )): no redirects
+                j = i + 2
+                while j + 1 < len(items) and not (items[j] == ("op", ")") and items[j + 1] == ("op", ")")):
+                    j += 1
+                i = j + 2
+                continue
             flush(";")
             segs.append({"kind": "open"})
         elif val == ")":
@@ -504,6 +546,7 @@ def _walk(segs, start, end, st: _State, depth: int, out: list) -> None:
             done = _loop_end(segs, i + 1, end)
             if done is not None:
                 _for_loop(seg["words"][k:], segs, i + 1, done, st, depth, out)
+                out.extend(_command(segs[done], st)[1])  # `done > file`
                 i = done + 1
                 continue
         j = i
@@ -715,23 +758,27 @@ def _cd(name: str, args: list[str], st: _State, unknown: bool) -> None:
 
 
 def _command(seg: dict, st: _State):
+    """(command dict or None, write actions for its redirects) for one simple command."""
     words = [_subst(w, st) for w in seg["words"]]
     redir = [(op, _subst(t, st)) for op, t in seg["redir"]]
     skip = any(_SUB in w for w in words) or any(_SUB in t for _, t in redir)
-    if words and all(_ASSIGN_RE.match(w) for w in words):
+    herein, herein_lines = seg.get("herein", False), seg.get("herein_lines")
+    assign_only = bool(words) and all(_ASSIGN_RE.match(w) for w in words)
+    k = None if assign_only else _skip_prefixes(words)
+    name = _canon(words[k]) if k is not None and k < len(words) else ""
+    args = words[k + 1:] if name else []
+    writes = _redirect_writes(name, args, redir, st.cwd, herein_lines)
+    if assign_only:
         _set_vars(words, st)
-        return None
-    k = _skip_prefixes(words)
-    if k is None or k >= len(words):
-        return None
-    name = _canon(words[k])
-    args = words[k + 1:]
+        return None, writes
+    if not name:
+        return None, writes
     if name in ("export", "local", "declare", "readonly", "typeset"):
         _set_vars(args, st)
-        return None
+        return None, writes
     if name in ("cd", "pushd", "popd"):
         _cd(name, args, st, unknown=skip or any("$" in a for a in args[:1]))
-        return None
+        return None, writes
     stdin = None
     for op, target in redir:
         if op == "<":
@@ -742,29 +789,243 @@ def _command(seg: dict, st: _State):
         "skip": skip,
         "redirected": any(op in _OUT_REDIRS for op, _ in redir),
         "stdin": stdin,
+        "herein": herein,
+        "herein_lines": herein_lines,
         "cwd": st.cwd,
-    }
+    }, writes
 
 
 def _pipeline(pipe: list[dict], st: _State, depth: int) -> list[dict]:
-    cmds = [_command(seg, st) for seg in pipe]
+    parsed = [_command(seg, st) for seg in pipe]
+    cmds = [c for c, _ in parsed]
     last_redirect = max((k for k, c in enumerate(cmds) if c and c["redirected"]), default=-1)
     out: list[dict] = []
     upstream_scope = None
-    for k, c in enumerate(cmds):
+    for k, (c, redirect_writes) in enumerate(parsed):
         prev_scope, upstream_scope = upstream_scope, None
-        if c is None or c["skip"] or k <= last_redirect:
-            continue
-        acts = _actions(c, k > 0, prev_scope, st, depth)
-        lists = [a for a in acts if a["op"] == "list"]
-        if lists:
-            upstream_scope = lists[0]["scope"]
-        if k + 1 < len(cmds) and _is_xargs_search(cmds[k + 1]):
-            acts = [a for a in acts if a["op"] != "list"]
-        if acts and all(a["op"] == "read" for a in acts) and k + 1 < len(cmds):
-            acts = _apply_filters(acts, cmds[k + 1:], c["cwd"])
-        out.extend(acts)
+        if c is not None and not c["skip"] and k > last_redirect:
+            acts = _actions(c, k > 0, prev_scope, st, depth)
+            lists = [a for a in acts if a["op"] == "list"]
+            if lists:
+                upstream_scope = lists[0]["scope"]
+            if k + 1 < len(cmds) and _is_xargs_search(cmds[k + 1]):
+                acts = [a for a in acts if a["op"] != "list"]
+            if acts and all(a["op"] == "read" for a in acts) and k + 1 < len(cmds):
+                acts = _apply_filters(acts, cmds[k + 1:], c["cwd"])
+            out.extend(acts)
+        if c is not None:
+            out.extend(_command_writes(c, cmds[k - 1] if k > 0 else None))
+        out.extend(redirect_writes)
     return out
+
+
+# ======================================================================== writes
+
+def _write(cmd, path, mode, lines=None):
+    return {"op": "write", "cmd": cmd or "sh", "path": path, "mode": mode, "lines": lines}
+
+
+def _write_paths(words, cwd, expand=True) -> list[str]:
+    return [p for p in _paths(words, cwd, expand) if p != "/dev" and not p.startswith(("/dev/", "/proc/"))]
+
+
+def _redirect_writes(name, args, redir, cwd, herein_lines) -> list[dict]:
+    targets = []
+    for op, target in redir:
+        if op in (">>", "&>>"):
+            mode = "append"
+        elif op in (">", ">|", "&>") or (op == ">&" and target and not re.match(r"^(\d+|-)$", target)):
+            mode = "overwrite"
+        else:
+            continue
+        for p in _write_paths([target], cwd, expand=False):
+            targets.append((p, mode))
+    if not targets:
+        return []
+    lines = _output_lines(name, args, herein_lines)
+    return [_write(name, p, mode, lines) for p, mode in targets]
+
+
+def _output_lines(name, args, herein_lines):
+    """Lines a command prints, when the command text alone says so; else None."""
+    try:
+        if name == "cat":
+            return herein_lines if not [a for a in args if not a.startswith("-")] else None
+        if name == "echo":
+            return _echo_lines(args)
+        if name == "printf":
+            return _printf_lines(args)
+    except Exception:
+        pass
+    return None
+
+
+def _echo_lines(args):
+    flags, k = "", 0
+    while k < len(args) and re.match(r"^-[neE]+$", args[k]):
+        flags += args[k][1:]
+        k += 1
+    text = " ".join(args[k:])
+    if _SUB in text or "$" in text:
+        return None
+    if "\\" in text:
+        if "e" in flags:
+            text = text.replace("\\n", "\n")
+        elif "E" not in flags:
+            return None  # shells disagree on escapes (zsh's echo expands them, bash's does not)
+    if "n" in flags:
+        return text.count("\n") + (1 if text and not text.endswith("\n") else 0)
+    return text.count("\n") + 1
+
+
+def _printf_lines(args):
+    if args and args[0] == "--":
+        args = args[1:]
+    if not args or args[0].startswith("-"):
+        return None
+    fmt, rest = args[0], args[1:]
+    if any(_SUB in a or "$" in a for a in args) or any("\n" in a or "\\" in a for a in rest):
+        return None
+    convs = len(re.findall(r"%[-+ #0-9.]*[a-zA-Z]", fmt.replace("%%", "")))
+    reps = -(-len(rest) // convs) if convs and rest else 1
+    text = fmt.replace("\\n", "\n")
+    if not text:
+        return 0
+    return reps * text.count("\n") + (0 if text.endswith("\n") else 1)
+
+
+def _sed_inplace_files(args) -> list[str]:
+    """File operands of `sed -i` / `sed -i ''` / `sed -i.bak` / `sed --in-place`; [] if not in-place."""
+    inplace, scripts, pos = False, 0, []
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--":
+            pos.extend(args[i + 1:])
+            break
+        if a.startswith("--"):
+            if a.startswith("--in-place"):
+                inplace = True
+            elif a in ("--expression", "--file", "--line-length"):
+                scripts += a != "--line-length"
+                i += 1
+            elif a.startswith(("--expression=", "--file=")):
+                scripts += 1
+        elif a.startswith("-") and len(a) > 1:
+            j = 1
+            while j < len(a):
+                ch = a[j]
+                if ch == "i":
+                    inplace = True
+                    # BSD takes the backup suffix as the next word: -i '' or -i .bak
+                    if j + 1 == len(a) and i + 1 < len(args) and re.match(r"^(|\.[\w.~-]*)$", args[i + 1]):
+                        i += 1
+                    break
+                if ch in "efl":
+                    scripts += ch != "l"
+                    if j + 1 == len(a):
+                        i += 1
+                    break
+                j += 1
+        else:
+            pos.append(a)
+        i += 1
+    if not inplace:
+        return []
+    return pos if scripts else pos[1:]
+
+
+def _perl_inplace_files(args) -> list[str]:
+    inplace, code, pos = False, False, []
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--":
+            pos.extend(args[i + 1:])
+            break
+        if not a.startswith("-") or len(a) < 2:
+            pos.extend(args[i:])  # perl stops option parsing at the first operand
+            break
+        j = 1
+        while j < len(a):
+            ch = a[j]
+            if ch == "i":
+                inplace = True
+                break
+            if ch in "eE":
+                code = True
+                if j + 1 == len(a):
+                    i += 1
+                break
+            if ch in "l0":
+                j += 1
+                while j < len(a) and a[j].isdigit():
+                    j += 1
+                continue
+            if ch in "MmIxdDCFV":
+                break
+            j += 1
+        i += 1
+    if not inplace:
+        return []
+    return pos if code else pos[1:]
+
+
+def _copy_move_writes(name, args, cwd) -> list[dict]:
+    opts, pos = _parse_opts(args, "tS", {"--target-directory", "--suffix"})
+    mode = "copy" if name == "cp" else "move"
+    target = next((v for f, v in opts if f in ("-t", "--target-directory") and v), None)
+    if target:
+        dst, srcs, into_dir = target, pos, True
+    else:
+        if len(pos) < 2:
+            return []
+        dst, srcs = pos[-1], pos[:-1]
+        into_dir = None
+    found = _write_paths([dst], cwd, expand=False)
+    if not found:
+        return []
+    dst_abs = found[0]
+    if into_dir is None:
+        no_target_dir = any(f in ("-T", "--no-target-directory") for f, _ in opts)
+        into_dir = not no_target_dir and os.path.isdir(dst_abs)
+    if not into_dir:
+        return [_write(name, dst_abs, mode)]
+    out, seen = [], set()
+    for src in _paths(srcs, cwd):
+        p = os.path.join(dst_abs, os.path.basename(src))
+        if p not in seen:
+            seen.add(p)
+            out.append(_write(name, p, mode))
+    return out
+
+
+def _command_writes(c, prev) -> list[dict]:
+    """Writes performed by the command itself (not by a shell redirect)."""
+    name, args, cwd = c["name"], c["args"], c["cwd"]
+    try:
+        if name == "tee":
+            opts, pos = _parse_opts(args, "", ())
+            mode = "append" if any(f in ("-a", "--append") for f, _ in opts) else "overwrite"
+            if c["herein"]:
+                lines = c["herein_lines"]
+            elif prev is not None:
+                lines = _output_lines(prev["name"], prev["args"], prev["herein_lines"])
+            else:
+                lines = None
+            return [_write("tee", p, mode, lines) for p in _write_paths(pos, cwd)]
+        if name == "sed":
+            return [_write("sed", p, "in-place") for p in _write_paths(_sed_inplace_files(args), cwd)]
+        if name == "perl":
+            return [_write("perl", p, "in-place") for p in _write_paths(_perl_inplace_files(args), cwd)]
+        if name in ("cp", "mv"):
+            return _copy_move_writes(name, args, cwd)
+        if name == "touch":
+            _, pos = _parse_opts(args, "dtrA", {"--date", "--reference", "--time"})
+            return [_write("touch", p, "touch") for p in _write_paths(pos, cwd)]
+    except Exception:
+        return []
+    return []
 
 
 # ======================================================================== option parsing
@@ -1181,7 +1442,7 @@ def _is_xargs_search(c) -> bool:
 def _actions(c, piped_in, upstream_scope, st, depth) -> list[dict]:
     name, args, cwd = c["name"], c["args"], c["cwd"]
     stdin = c["stdin"]
-    pipe_in = piped_in and not stdin
+    pipe_in = bool(piped_in or c.get("herein")) and not stdin
 
     def files_or_stdin(words):
         paths = _paths(words, cwd)
@@ -1232,7 +1493,7 @@ def _actions(c, piped_in, upstream_scope, st, depth) -> list[dict]:
         return [act] if act else []
 
     if name == "xargs":
-        if not piped_in and not stdin:
+        if not piped_in and not stdin and not c.get("herein"):
             return []
         inner = _xargs_inner(args)
         k = _skip_prefixes(inner) if inner else None
@@ -1336,8 +1597,8 @@ def _filter_kind(c):
     if c["skip"]:
         return ("hide",)
     name, args = c["name"], c["args"]
-    if c["stdin"]:
-        return ("hide",)  # `< file` replaces the pipe
+    if c["stdin"] or c.get("herein"):
+        return ("hide",)  # `< file` or a heredoc replaces the pipe
     if name == "head":
         spec = _head_spec(args)
         if spec["files"]:

@@ -89,7 +89,8 @@ class ReadTests(Fixture):
 
     def test_sed_not_a_read(self):
         self.assertEqual(self.parse("sed 's/a/b/' big.txt"), [])
-        self.assertEqual(self.parse("sed -i '' -n '1,5p' big.txt"), [])
+        acts = self.parse("sed -i '' -n '1,5p' big.txt")  # an in-place edit, never a read
+        self.assertEqual([(a["op"], a["mode"]) for a in acts], [("write", "in-place")])
         self.assertEqual(self.parse("sed -n '/start/,/end/p' big.txt"), [])
 
     def test_awk_ranges(self):
@@ -159,11 +160,13 @@ class ReadTests(Fixture):
 
 
 class SkipTests(Fixture):
-    def test_stdout_redirect_skipped(self):
-        self.assertEqual(self.parse("cat notes/a.md > out.txt"), [])
-        self.assertEqual(self.parse("cat notes/a.md >> out.txt"), [])
-        self.assertEqual(self.parse("grep -rl alpha . > hits.txt"), [])
-        self.assertEqual(self.parse("cat big.txt | head -3 > out.txt"), [])
+    def test_stdout_redirect_is_a_write_not_a_read(self):
+        def ops(cmd):
+            return [(a["op"], a["cmd"], a.get("path"), a.get("mode")) for a in self.parse(cmd)]
+        self.assertEqual(ops("cat notes/a.md > out.txt"), [("write", "cat", self.p("out.txt"), "overwrite")])
+        self.assertEqual(ops("cat notes/a.md >> out.txt"), [("write", "cat", self.p("out.txt"), "append")])
+        self.assertEqual(ops("grep -rl alpha . > hits.txt"), [("write", "grep", self.p("hits.txt"), "overwrite")])
+        self.assertEqual(ops("cat big.txt | head -3 > out.txt"), [("write", "head", self.p("out.txt"), "overwrite")])
         self.assertEqual(self.parse("cat big.txt &>/dev/null"), [])
 
     def test_substitution_and_heredoc_skipped(self):
@@ -173,7 +176,8 @@ class SkipTests(Fixture):
         self.assertEqual(self.parse("n=$(wc -l < big.txt)"), [])
         cmd = "cat > new.md <<'EOF'\ncat notes/a.md\nEOF\ntail -2 big.txt"
         acts = self.parse(cmd)
-        self.assertEqual([(a["path"], a["from_end"]) for a in acts], [(self.p("big.txt"), 2)])
+        self.assertEqual([(a["op"], a["path"]) for a in acts], [("write", self.p("new.md")), ("read", self.p("big.txt"))])
+        self.assertEqual((acts[0]["lines"], acts[1]["from_end"]), (1, 2))
 
     def test_stderr_redirects_kept(self):
         self.assertEqual(self.one("cat notes/a.md 2>/dev/null")["path"], self.p("notes/a.md"))
@@ -182,7 +186,7 @@ class SkipTests(Fixture):
 
     def test_other_commands_yield_nothing(self):
         for cmd in ("python3 x.py", "git status", "wc -l big.txt", "echo cat big.txt",
-                    "mkdir -p a/b", "mv a b", "command -v cat", "# cat big.txt"):
+                    "mkdir -p a/b", "rm -f big.txt", "command -v cat", "# cat big.txt"):
             self.assertEqual(self.parse(cmd), [], cmd)
 
     def test_comments_stripped(self):
@@ -281,9 +285,9 @@ class ListTests(Fixture):
         a = self.one("ls notes")
         self.assertEqual((a["op"], a["cmd"], a["scope"]), ("list", "ls", [self.p("notes")]))
         self.assertEqual(sr.hits(a, "a.md\nb.md\n", self.root), [self.p("notes/a.md"), self.p("notes/b.md")])
-        long_out = ("total 16\ndrwxr-xr-x  4 bart  staff  128 Aug 11 16:10 .\n"
-                    "-rw-r--r--@ 1 bart  staff   24 Aug 11 16:10 a.md\n"
-                    "-rw-r--r--  1 bart  staff   12 Aug 11 16:10 b.md\n")
+        long_out = ("total 16\ndrwxr-xr-x  4 user  staff  128 Aug 11 16:10 .\n"
+                    "-rw-r--r--@ 1 user  staff   24 Aug 11 16:10 a.md\n"
+                    "-rw-r--r--  1 user  staff   12 Aug 11 16:10 b.md\n")
         b = self.one("ls -la notes")
         self.assertEqual(sr.hits(b, long_out, self.root), [self.p("notes/a.md"), self.p("notes/b.md")])
 
@@ -348,6 +352,100 @@ class ResolveReadTests(Fixture):
         with open(p, "wb") as fh:
             fh.truncate(sr.MAX_READ_BYTES + 1)
         self.assertIsNone(sr.resolve_read({"op": "read", "path": p}))
+
+
+class WriteTests(Fixture):
+    def w(self, act):
+        return (act["op"], act["cmd"], act["path"], act["mode"], act["lines"])
+
+    def test_heredoc_append_counts_lines_and_body_is_not_parsed(self):
+        cmd = "cat >> log.md <<'EOF'\n\n## [2026-09-13] query | cat notes/a.md\n- grep -rl alpha .\nEOF"
+        acts = self.parse(cmd)
+        self.assertEqual([self.w(a) for a in acts], [("write", "cat", self.p("log.md"), "append", 3)])
+        a = self.one("cat > new.md <<-EOF\n\tone\n\ttwo\n\tEOF\n")
+        self.assertEqual((a["mode"], a["lines"]), ("overwrite", 2))
+
+    def test_real_session_sed_inplace_then_heredoc_append(self):
+        cmd = ("sed -i '' 's/^rows: 3$/rows: 4/' _meta/gaps.md && cat >> _meta/gaps.md <<'EOF'\n"
+               "| g-071 | process | row |\nEOF")
+        acts = self.parse(cmd)
+        self.assertEqual([self.w(a) for a in acts], [
+            ("write", "sed", self.p("_meta/gaps.md"), "in-place", None),
+            ("write", "cat", self.p("_meta/gaps.md"), "append", 1),
+        ])
+
+    def test_devices_and_fd_redirects_are_not_writes(self):
+        self.assertEqual(self.parse("python3 x.py > /dev/null 2>&1"), [])
+        self.assertEqual(self.parse("echo oops >&2"), [])
+        self.assertEqual(self.parse("echo oops > /dev/stderr"), [])
+        self.assertEqual(self.parse("make 2> err.log"), [])
+        self.assertEqual(self.parse("tee /dev/null < big.txt"), [])
+        acts = self.parse("grep -rl alpha . 2>&1 | head")
+        self.assertEqual([a["op"] for a in acts], ["search"])
+
+    def test_tee(self):
+        a = self.one('echo "| row |" | tee -a notes/a.md')
+        self.assertEqual(self.w(a), ("write", "tee", self.p("notes/a.md"), "append", 1))
+        a = self.one("cat <<'EOF' | tee out.md >/dev/null\none\ntwo\nEOF")
+        self.assertEqual(self.w(a), ("write", "tee", self.p("out.md"), "overwrite", 2))
+        acts = self.parse("ls notes | tee listing.txt")
+        self.assertEqual([a["op"] for a in acts], ["list", "write"])
+
+    def test_cp_and_mv(self):
+        acts = self.parse("cp notes/a.md notes/b.md sub")
+        self.assertEqual([self.w(a) for a in acts], [
+            ("write", "cp", self.p("sub/a.md"), "copy", None), ("write", "cp", self.p("sub/b.md"), "copy", None)])
+        self.assertEqual(self.w(self.one("cp -p big.txt new.txt")), ("write", "cp", self.p("new.txt"), "copy", None))
+        self.assertEqual(self.w(self.one("mv big.txt sub/")), ("write", "mv", self.p("sub/big.txt"), "move", None))
+        self.assertEqual(self.one("cp -t sub notes/*.md" if False else "cp -t sub big.txt")["path"], self.p("sub/big.txt"))
+        self.assertEqual(self.parse("cp big.txt /dev/null"), [])
+
+    def test_printf_and_echo(self):
+        a = self.one("printf '| a |\\n| b |\\n' > t.md")
+        self.assertEqual(self.w(a), ("write", "printf", self.p("t.md"), "overwrite", 2))
+        self.assertEqual(self.one("printf '%s\\n' a b c >> t.md")["lines"], 3)
+        self.assertEqual(self.one("echo hello >> t.md")["lines"], 1)
+        self.assertIsNone(self.one('echo "$(date)" >> t.md')["lines"])
+        self.assertIsNone(self.one("cat notes/a.md > t.md")["lines"])
+
+    def test_sed_and_perl_in_place(self):
+        acts = self.parse("sed --in-place -e 's/a/b/' notes/*.md")
+        self.assertEqual([(a["path"], a["mode"]) for a in acts],
+                         [(self.p("notes/a.md"), "in-place"), (self.p("notes/b.md"), "in-place")])
+        self.assertEqual(self.one("sed -i.bak 's/a/b/' big.txt")["path"], self.p("big.txt"))
+        self.assertEqual(self.one("sed -i -e 's/a/b/' -e 's/c/d/' big.txt")["path"], self.p("big.txt"))
+        acts = self.parse("perl -pi -e 's/a/b/' notes/a.md notes/b.md")
+        self.assertEqual([self.w(a) for a in acts], [("write", "perl", self.p("notes/a.md"), "in-place", None),
+                                                     ("write", "perl", self.p("notes/b.md"), "in-place", None)])
+        self.assertEqual(self.parse("perl -ne 'print if /a/' big.txt"), [])
+        self.assertEqual(self.one("sed -n '1,3p' big.txt")["op"], "read")
+
+    def test_touch_mkdir_rm(self):
+        acts = self.parse("touch new.md sub/other.md")
+        self.assertEqual([self.w(a) for a in acts], [("write", "touch", self.p("new.md"), "touch", None),
+                                                     ("write", "touch", self.p("sub/other.md"), "touch", None)])
+        self.assertEqual(self.parse("mkdir -p out && rm -rf out"), [])
+
+    def test_paths_resolve_like_reads(self):
+        self.assertEqual(self.one("cd sub && echo hi >> x.md")["path"], self.p("sub/x.md"))
+        self.assertEqual(self.one("echo hi > ~/rwm-never-created.md")["path"],
+                         os.path.join(os.path.expanduser("~"), "rwm-never-created.md"))
+        self.assertEqual(self.parse('echo x > "$RWM_TEST_UNSET_VAR/f.md"'), [])
+        self.assertEqual(self.parse('cd "$RWM_TEST_UNSET_VAR" && touch f.md'), [])
+        acts = self.parse("for f in notes/a.md notes/b.md; do sed -i '' 's/a/b/' \"$f\"; done > loop.log")
+        self.assertEqual([a["path"] for a in acts], [self.p("notes/a.md"), self.p("notes/b.md"), self.p("loop.log")])
+
+    def test_comparisons_are_not_redirects(self):
+        self.assertEqual(self.parse('if [[ "$a" > "b" ]]; then echo yes; fi'), [])
+        self.assertEqual(self.parse("(( n > 3 )) && echo big"), [])
+
+    def test_order_and_heredoc_stdin(self):
+        acts = self.parse("cat big.txt; echo x >> log.md; tail -2 log.md")
+        self.assertEqual([a["op"] for a in acts], ["read", "write", "read"])
+        acts = self.parse("python3 - <<'PY' > out.json\nprint(open('big.txt').read())\nPY")
+        self.assertEqual([self.w(a) for a in acts], [("write", "python3", self.p("out.json"), "overwrite", None)])
+        self.assertEqual(self.parse("rg alpha <<'EOF'\nalpha\nEOF"), [])
+        self.assertEqual(self.parse("cat <<'EOF'\ncat big.txt\nEOF"), [])
 
 
 class GarbageTests(Fixture):
