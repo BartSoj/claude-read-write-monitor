@@ -69,7 +69,9 @@ ranges.
 `bat` and `less` count as reads; `grep`, `rg`, `ag` and `git grep` as searches; `find`, `fd`, `ls`,
 `tree` and `rg --files` as listings. Redirects (`>`, `>>`, including heredocs), `tee`, `sed -i`,
 `perl -pi`, `cp`, `mv` and `touch` count as writes, with the line count when the command itself shows
-it. The parser follows `cd`, pipes, variables and `for` loops, never parses a heredoc body as commands,
+it. Files a command changed that the parser could not name — from a Python heredoc, a formatter, `git`
+— are recorded too, found by modification time within the command's run (`RWM_BASH_WRITE_SCAN=0` turns
+that off). The parser follows `cd`, pipes, variables and `for` loops, never parses a heredoc body as commands,
 and skips anything it cannot read with confidence, such as command substitution. Read line ranges are
 resolved against the file on disk; sizes for those ranges are estimates. Shell writes carry no line
 spans.
@@ -211,9 +213,11 @@ choice; `RWM_THEME` sets the default.
 - **`@file` references** in prompts. Claude Code inlines them while building the prompt; no hook fires.
 - **Commands the shell parser does not know**: scripts, `git show`, `jq`, editors, and the forms it
   skips on purpose. Inferred reads can also miss or over-count.
-- **Writes made from inside a program** — a Python or Node script, a formatter, `git checkout`,
-  `curl -o`, `rsync`. Shell writes the parser recognises are recorded, but without line spans, so line
-  numbers read before them are not projected across them.
+- **Which lines a shell command changed.** Shell writes carry no line spans, so line numbers read
+  before them are not projected across them. Writes the parser cannot name (a Python heredoc, a
+  formatter, `git checkout`) are still caught: after each Bash call, project files whose modification
+  time falls inside that command's run are recorded as changed. Files beyond `RWM_TREE_MAX`, or in a
+  project too large to list within half a second, are not checked.
 - **WebFetch and MCP tool results.**
 - **Subagent return summaries.** The subagent's own reads are recorded; what it hands back is not.
 
@@ -231,6 +235,7 @@ The dashboard says so on the page rather than presenting its totals as complete.
 | `RWM_LABEL_PROMPTS` | on | `0` stops storing the first prompt as the session label |
 | `RWM_INSTRUCTION_FILES` | `CLAUDE.md,CLAUDE.local.md,AGENTS.md,GEMINI.md,.claude/rules/**,.cursor/rules/**,.github/copilot-instructions.md,SKILL.md` | Comma-separated globs for files counted as instructions |
 | `RWM_THEME` | follows the OS | Default theme: `light`, `dark` or `stage` |
+| `RWM_BASH_WRITE_SCAN` | on | `0` stops checking which project files changed during a Bash command |
 | `RWM_FOLLOW_RECENT_MINUTES` | `30` | How recently a running session must have been active for follow mode to show it on load |
 
 Hooks run with Claude Code's environment, so set these in the `env` block of Claude Code settings
