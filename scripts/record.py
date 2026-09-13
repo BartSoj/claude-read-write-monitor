@@ -353,6 +353,18 @@ def on_bash(d: dict, base: dict) -> list[dict]:
     for act in shell_reads.parse(ti.get("command") or "", cwd)[:40]:
         rec = dict(base)
         rec.update({"source": "bash", "cmd": act.get("cmd"), "tool_use_id": d.get("tool_use_id")})
+        if act["op"] == "write":
+            # A redirect, tee, sed -i, cp/mv target or touch. The command says which file and how,
+            # not which lines, so there are no spans; a heredoc's line count is kept when known.
+            after = shell_reads.resolve_read({"op": "read", "cmd": "cat", "path": act.get("path"),
+                                              "start": None, "end": None, "from_end": None})
+            mode = act.get("mode")
+            rec.update({"kind": "edit" if mode in ("append", "in-place") else "write",
+                        "path": act.get("path"), "mode": mode, "precision": "shell",
+                        "lines_written": act.get("lines"),
+                        "total_lines_after": after.get("total_lines") if after else None})
+            out.append(clean(rec))
+            continue
         if act["op"] == "read":
             r = shell_reads.resolve_read(act)
             if not r:
@@ -400,7 +412,7 @@ def on_pending(d: dict, base: dict) -> list[dict]:
         out = []
         for act in shell_reads.parse(ti.get("command") or "", cwd or os.getcwd())[:40]:
             r = dict(rec, op=act["op"], source="bash", cmd=act.get("cmd"))
-            if act["op"] == "read":
+            if act["op"] in ("read", "write"):
                 r["path"] = act.get("path")
             else:
                 r.update({"pattern": act.get("pattern"), "scope": (act.get("scope") or [None])[0]})
@@ -437,13 +449,16 @@ def on_instructions(d: dict, rec: dict) -> dict | None:
 # ---------------------------------------------------------------- server
 
 def ensure_server() -> None:
+    """Start the server check detached. SessionStart is the one synchronous hook, and
+    waiting for it held every session start for ~190 ms; the server is up within a
+    fraction of a second either way, long before anyone opens the link."""
     import subprocess
     try:
         subprocess.Popen(
             [sys.executable, os.path.join(HERE, "serve.py"), "ensure"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
             start_new_session=True,
-        ).wait(timeout=10)
+        )
     except Exception:
         pass
 
