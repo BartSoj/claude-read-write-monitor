@@ -20,7 +20,7 @@ work play in about one. Click a GIF to download the 1080p MP4.
 > Write the guide we planned on scheduling and monitoring — how to set up a standing monitor that keeps
 > running — using only what the atlas already holds, no web.
 
-[![Demo 1: an agent reads its way through a wiki before writing a new guide](https://raw.githubusercontent.com/BartSoj/claude-read-write-monitor/media/demo-1.gif)](https://raw.githubusercontent.com/BartSoj/claude-read-write-monitor/media/demo-1.mp4)
+[![Demo 1: an agent reads its way through a wiki before writing a new guide](https://raw.githubusercontent.com/BartSoj/claude-read-write-monitor/main/media/demo-1.gif)](https://raw.githubusercontent.com/BartSoj/claude-read-write-monitor/main/media/demo-1.mp4)
 
 - **Expected:** 14 files to read (the schema, the guide template, the scope rulings, the need, its
   methods and sources, the sibling guides) and 6 to change.
@@ -41,7 +41,7 @@ work play in about one. Click a GIF to download the 1080p MP4.
 
 The announcement is made up for the test.
 
-[![Demo 2: one reported change spreads to every page that depends on it](https://raw.githubusercontent.com/BartSoj/claude-read-write-monitor/media/demo-2.gif)](https://raw.githubusercontent.com/BartSoj/claude-read-write-monitor/media/demo-2.mp4)
+[![Demo 2: one reported change spreads to every page that depends on it](https://raw.githubusercontent.com/BartSoj/claude-read-write-monitor/main/media/demo-2.gif)](https://raw.githubusercontent.com/BartSoj/claude-read-write-monitor/main/media/demo-2.mp4)
 
 - **Expected:** 9 files to read and 6 to change: the source page, the two need pages whose source
   ladders list its auth as `none`, the index line that calls it keyless, a roadmap row, and the log.
@@ -381,6 +381,7 @@ scripts/export_replay.py         a recorded session as one self-contained replay
 scripts/latency.py               development tool: tool call to highlight latency
 web/viewer.html                  the dashboard, self-contained
 tests/                           unit tests: recorder, shell parser, listing, server, export
+media/                           the demo GIFs and MP4s shown above
 ```
 
 State: `${CLAUDE_PLUGIN_DATA}/sessions/<session_id>/events.jsonl` and `meta.json`, plus
