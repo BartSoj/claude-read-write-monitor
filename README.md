@@ -8,6 +8,47 @@ works, a per-session timeline, and a rollup across sessions.
 text kept is a session label: the first prompt, cut at 80 characters, stored in the session's
 `meta.json` so the session picker is readable. Set `RWM_LABEL_PROMPTS=0` to turn it off.
 
+## See it
+
+Two recorded sessions in a markdown wiki of about 400 files that agents maintain. Every tile is a file:
+**blue** when read, **orange** when written. A white ring marks a file the task was expected to read or
+change and has not yet. Both are replays with every wait over a second cut, so several minutes of
+work play in about one. Click a GIF to download the 1080p MP4.
+
+### A new page: does the agent read what it needs before it writes?
+
+> Write the guide we planned on scheduling and monitoring — how to set up a standing monitor that keeps
+> running — using only what the atlas already holds, no web.
+
+[![Demo 1: an agent reads its way through a wiki before writing a new guide](https://raw.githubusercontent.com/BartSoj/claude-read-write-monitor/media/demo-1.gif)](https://raw.githubusercontent.com/BartSoj/claude-read-write-monitor/media/demo-1.mp4)
+
+- **Expected:** 14 files to read (the schema, the guide template, the scope rulings, the need, its
+  methods and sources, the sibling guides) and 6 to change.
+- **What happened:** the agent read 13 of the 14 before writing anything, then created the guide and
+  added backlinks from the pages that should point to it. That took about 9 minutes; the first edit
+  came at 2:00, after 25 files.
+- **The miss:** the ring left on `_meta/scope.md`. The agent found it with a search and never opened
+  it. That points at the wiki's structure, not at the prompt: the guide template does not link the
+  scope rulings.
+- **One dark tile:** `log.md` was appended from a Python heredoc, which this recording predates. The
+  monitor now catches such writes by modification time.
+
+### One change: does it reach everything that depends on it?
+
+> Heads up: Bluesky announced on 10 September that its public search API now needs an API key. Don't
+> probe or fetch anything — record it as reported and update every page that relies on it being
+> keyless.
+
+The announcement is made up for the test.
+
+[![Demo 2: one reported change spreads to every page that depends on it](https://raw.githubusercontent.com/BartSoj/claude-read-write-monitor/media/demo-2.gif)](https://raw.githubusercontent.com/BartSoj/claude-read-write-monitor/media/demo-2.mp4)
+
+- **Expected:** 9 files to read and 6 to change: the source page, the two need pages whose source
+  ladders list its auth as `none`, the index line that calls it keyless, a roadmap row, and the log.
+- **What happened:** one search for the source's link put rings on exactly those pages, then each
+  turned orange. The run ended at 9 / 9 and 6 / 6, in under 5 minutes; the first edit came at 2:44,
+  after 12 files.
+
 ## This repository is the implementation only
 
 The design is in a public Syns repository,
