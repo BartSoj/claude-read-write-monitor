@@ -1,5 +1,10 @@
 {
   "name": "read-write-monitor",
+  "version": "1.0.0",
   "description": "Records exact file/line ranges the agent reads and edits, and serves a live per-session dashboard.",
-  "author": { "name": "BartSoj" }
+  "author": { "name": "Bartosz Sojka", "url": "https://github.com/BartSoj" },
+  "homepage": "https://github.com/BartSoj/claude-read-write-monitor",
+  "repository": "https://github.com/BartSoj/claude-read-write-monitor",
+  "license": "MIT",
+  "keywords": ["observability", "hooks", "context", "dashboard"]
 }

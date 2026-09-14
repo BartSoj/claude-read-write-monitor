@@ -8,6 +8,21 @@ works, a per-session timeline, and a rollup across sessions.
 text kept is a session label: the first prompt, cut at 80 characters, stored in the session's
 `meta.json` so the session picker is readable. Set `RWM_LABEL_PROMPTS=0` to turn it off.
 
+## This repository is the implementation only
+
+The design is in a public Syns repository,
+[`bartsoj/read-write-monitoring`](https://syns.dev/bartsoj/read-write-monitoring): `SPEC.md` is the
+specification (architecture, event schema, line-drift model, server API, views, blind spots),
+`DECISIONS.md` the reasons behind it, `RESEARCH.md` what Claude Code's hooks were observed to provide,
+and `STATUS.md` what is verified and what is not. Nothing here decides what the tool should be.
+
+## Requirements
+
+- Claude Code with plugin support.
+- `python3` on `PATH`. Standard library only; tested with 3.13.
+- macOS is verified. Linux is expected to work but is not verified yet. Windows is not supported.
+- `git` is optional: without it the file listing walks the folder.
+
 ## Install
 
 The repository is its own marketplace:
@@ -17,27 +32,12 @@ claude plugin marketplace add BartSoj/claude-read-write-monitor
 claude plugin install read-write-monitor@claude-read-write-monitor --scope user
 ```
 
-Or load a working copy for one session, without installing:
+To update to a new release:
 
 ```sh
-claude --plugin-dir path/to/claude-read-write-monitor
-```
-
-### Iterating
-
-An installed plugin runs from a **copy** in the plugin cache, so edits to the working copy have
-no effect until they are published:
-
-```sh
-git push
 claude plugin marketplace update claude-read-write-monitor
 claude plugin update read-write-monitor@claude-read-write-monitor   # restart to apply
 ```
-
-`plugin.json` deliberately declares no `version`, so the plugin tracks the resolved commit and
-every push is an update. Add a `version` field only when the release cycle should be pinned.
-
-To iterate without that loop, use `--plugin-dir` on the working copy.
 
 The dashboard URL for the session is printed at session start and opens the Tree view. The index at
 <http://127.0.0.1:7788> lists every session on this machine and opens the newest.
@@ -217,8 +217,8 @@ python3 scripts/export_replay.py <session_id> --out replays/demo --expect <set> 
   holding its state at recording time to show that. Files the session created still animate in.
   Dot-folders such as `.claude/` are hidden; what the session did in them still counts.
 - **What it looks like:** the Tree view in map layout, stage palette and projector sizes, with no
-  header or tool bars. `--reserve` pixels stay free at the bottom, for a caption. It opens paused at
-  step `--at`, at speed `--speed` (default ×1), with every wait capped at one second.
+  header or tool bars, sized for 1920×1080. `--reserve` pixels stay free at the bottom, for a caption.
+  It opens paused at step `--at`, at speed `--speed` (default ×1), with every wait capped at one second.
 - **Page query:** the file's own query overrides what was baked in: `index.html?autoplay=1` plays from
   the opening step, `?speed=<n>` sets the speed, `?gaps=full` keeps the recorded waits.
 - **Refusals:** the export will not write a file that contains your home directory path or any
@@ -290,31 +290,6 @@ Hooks run with Claude Code's environment, so set these in the `env` block of Cla
 The server takes its environment from the session that started it. After changing a server setting,
 stop it (`python3 scripts/serve.py stop`); the next session starts it again.
 
-## Layout
-
-```
-.claude-plugin/plugin.json   manifest
-hooks/hooks.json             hook wiring
-scripts/record.py            hook recorder — appends JSON lines per event
-scripts/shell_reads.py       infers reads, searches and listings from Bash commands
-scripts/tree.py              project file listing, from git or a filesystem walk
-scripts/serve.py             shared local server (ensure | run | stop | status)
-scripts/latency.py           development tool: tool call to highlight latency
-web/viewer.html              the dashboard, self-contained
-tests/                       unit tests for tree.py and shell_reads.py
-```
-
-State: `${CLAUDE_PLUGIN_DATA}/sessions/<session_id>/events.jsonl` and `meta.json`, plus
-`${CLAUDE_PLUGIN_DATA}/starts.jsonl`, one line per session start.
-
-## Tests
-
-```sh
-python3 -m unittest discover -s tests
-```
-
-Standard library only.
-
 ## Server
 
 ```sh
@@ -334,5 +309,63 @@ is not necessarily where the installed plugin records; set `RWM_DATA_DIR` to mat
 `python3 scripts/serve.py ensure` reports when the port is held by a server reading a different
 directory.
 
-Live updates are pushed to the page over server-sent events. The API is described in the source of
-`scripts/serve.py`.
+Live updates are pushed to the page over server-sent events. The API is specified in the design
+repository's `SPEC.md`.
+
+## Working on it
+
+```sh
+python3 -m unittest discover -s tests
+claude --plugin-dir path/to/claude-read-write-monitor
+```
+
+An installed plugin runs from a copy in the plugin cache, so editing a clone changes nothing until a
+release. `--plugin-dir` loads a clone for one session. If the plugin is also installed, keep the two
+apart for that session:
+
+```sh
+RWM_DATA_DIR=/tmp/rwm-dev RWM_PORT=7789 claude --plugin-dir path/to/claude-read-write-monitor \
+  --settings '{"enabledPlugins":{"read-write-monitor@claude-read-write-monitor":false}}'
+```
+
+```
+.claude-plugin/plugin.json       manifest
+.claude-plugin/marketplace.json  the repository as its own marketplace
+hooks/hooks.json                 hook wiring
+scripts/record.py                hook recorder — appends JSON lines per event
+scripts/shell_reads.py           infers reads, searches, listings and writes from Bash commands
+scripts/tree.py                  project file listing, from git or a filesystem walk
+scripts/serve.py                 shared local server (ensure | run | stop | status | export | import)
+scripts/export_replay.py         a recorded session as one self-contained replay page
+scripts/latency.py               development tool: tool call to highlight latency
+web/viewer.html                  the dashboard, self-contained
+tests/                           unit tests: recorder, shell parser, listing, server, export
+```
+
+State: `${CLAUDE_PLUGIN_DATA}/sessions/<session_id>/events.jsonl` and `meta.json`, plus
+`${CLAUDE_PLUGIN_DATA}/starts.jsonl`, one line per session start.
+
+## Contributing
+
+The specification comes before the code. The spec, the decisions behind it and the evidence for what
+Claude Code's hooks provide are in a public Syns repository,
+[`bartsoj/read-write-monitoring`](https://syns.dev/bartsoj/read-write-monitoring). Read it before you
+change anything here. Bugs and questions are welcome as issues.
+
+1. Fork the spec: `syns fork bartsoj/read-write-monitoring`.
+2. Change the spec in your fork first: the behaviour in `SPEC.md`, and a decision in `DECISIONS.md`
+   when behaviour changes.
+3. Fork this repository and implement against your spec. Tests must pass.
+4. Make your Syns fork public and link it from a pull request here. Code and spec are reviewed
+   together and merged together.
+
+## Release
+
+1. `python3 -m unittest discover -s tests`, and a live session with `--plugin-dir`.
+2. Bump `version` in `.claude-plugin/plugin.json`. Installs move only when it changes.
+3. Record what was verified in the design repository's `STATUS.md`.
+4. `git tag -a vX.Y.Z -m "read-write-monitor X.Y.Z" && git push origin main --tags`.
+
+## License
+
+MIT

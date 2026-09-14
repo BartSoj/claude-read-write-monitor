@@ -86,7 +86,8 @@ def session_meta(name: str) -> dict:
     if hit and hit[0] == mtime:
         return hit[1]
     try:
-        meta = json.load(open(path))
+        with open(path) as f:
+            meta = json.load(f)
     except Exception:
         meta = {}
     _meta_cache[name] = (mtime, meta)
