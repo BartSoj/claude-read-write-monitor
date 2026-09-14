@@ -675,7 +675,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._file("viewer.html")
         if p == "/health":
             return self._json({"ok": True, "port": PORT, "data": data_dir(),
-                               "api": API_VERSION, "code": HERE, "pid": os.getpid()})
+                               "api": API_VERSION, "version": plugin_version(), "code": HERE, "pid": os.getpid()})
         if p == "/api/config":
             return self._json(config())
         if p == "/api/sessions":
@@ -841,6 +841,39 @@ def stop() -> bool:
     return not is_up()
 
 
+def plugin_version() -> str:
+    try:
+        with open(os.path.join(os.path.dirname(HERE), ".claude-plugin", "plugin.json")) as f:
+            return str(json.load(f).get("version") or "")
+    except Exception:
+        return ""
+
+
+def _version_key(version) -> tuple:
+    key = []
+    for part in str(version or "").split("."):
+        digits = ""
+        for ch in part:
+            if not ch.isdigit():
+                break
+            digits += ch
+        key.append(int(digits or 0))
+    return tuple(key)
+
+
+def should_replace(health: dict, version: str | None = None) -> bool:
+    """Same data directory, older code: a plugin update left the previous server running.
+
+    Updates rarely change API_VERSION, so the plugin version decides too. A session still on
+    older code (one resumed from before an update) must not put its older server back.
+    """
+    api = int(health.get("api") or 1)
+    if api != API_VERSION:
+        return api < API_VERSION
+    mine = plugin_version() if version is None else version
+    return _version_key(health.get("version")) < _version_key(mine)
+
+
 def ensure() -> int:
     if is_up():
         try:
@@ -858,8 +891,7 @@ def ensure() -> int:
                 f"read-write-monitor: port {PORT} is served by another instance reading "
                 f"{running}, not {data_dir()}. Stop it (serve.py stop) or set RWM_PORT.\n")
             return 1
-        # Same data, older code: a plugin update left the previous server running.
-        if int(health.get("api") or 1) >= API_VERSION or not stop():
+        if not should_replace(health) or not stop():
             return 0
     log = os.path.join(data_dir(), "server.log")
     os.makedirs(data_dir(), exist_ok=True)

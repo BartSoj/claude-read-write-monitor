@@ -1,6 +1,6 @@
 {
   "name": "read-write-monitor",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Records exact file/line ranges the agent reads and edits, and serves a live per-session dashboard.",
   "author": { "name": "Bartosz Sojka", "url": "https://github.com/BartSoj" },
   "homepage": "https://github.com/BartSoj/claude-read-write-monitor",

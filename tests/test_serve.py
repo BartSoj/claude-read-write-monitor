@@ -108,5 +108,19 @@ class ExpectationTests(DataDirCase):
         self.assertEqual(serve.parse_expectations(serve.format_expectations(s), "rt"), s)
 
 
+class ReplaceTests(unittest.TestCase):
+    def test_replaces_an_older_server_and_never_downgrades(self):
+        api = serve.API_VERSION
+        self.assertTrue(serve.should_replace({"api": api - 1, "version": "9.0.0"}, "1.0.1"))
+        self.assertTrue(serve.should_replace({"api": api}, "1.0.1"))  # before /health carried a version
+        self.assertTrue(serve.should_replace({"api": api, "version": "1.0.0"}, "1.0.1"))
+        self.assertFalse(serve.should_replace({"api": api, "version": "1.0.1"}, "1.0.1"))
+        self.assertFalse(serve.should_replace({"api": api, "version": "1.2.0"}, "1.0.10"))
+        self.assertFalse(serve.should_replace({"api": api + 1}, "2.0.0"))
+
+    def test_reads_its_own_plugin_version(self):
+        self.assertRegex(serve.plugin_version(), r"^\d+\.\d+\.\d+$")
+
+
 if __name__ == "__main__":
     unittest.main()
